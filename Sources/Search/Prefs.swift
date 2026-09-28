@@ -410,12 +410,12 @@ final class Preferences: ObservableObject {
         // A test run downloads into its own folder: ~/Downloads would have
         // macOS stop it to ask for access, with a dialog on the screen of
         // whoever is working beside it.
-        let testDownloads = Store.folder.appendingPathComponent("Downloads", isDirectory: true)
-        if Store.testing { try? FileManager.default.createDirectory(at: testDownloads, withIntermediateDirectories: true) }
+        let separateDownloads = Store.folder.appendingPathComponent("Downloads", isDirectory: true)
+        if Store.testing || Store.beta { try? FileManager.default.createDirectory(at: separateDownloads, withIntermediateDirectories: true) }
         downloads = Store.testing
-            ? testDownloads
+            ? separateDownloads
             : (store.string(forKey: "downloads")).map { URL(fileURLWithPath: $0) }
-                ?? FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
+                ?? (Store.beta ? separateDownloads : FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0])
         asksWhereToSave = store.bool(forKey: "downloads.ask")
         savesPasswords = store.object(forKey: "passwords.save") as? Bool ?? true
         fillsPasswords = store.object(forKey: "passwords.fill") as? Bool ?? true

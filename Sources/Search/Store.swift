@@ -9,6 +9,8 @@ import WebKit
 // make twice.
 
 enum Store {
+    static var beta: Bool { Bundle.main.bundleIdentifier == "com.officecommun.search.beta" }
+
     /// A run is a test run if it says so, or if it is being run straight out
     /// of the build folder rather than from an installed app. The second half
     /// is not belt and braces: a development build launched from a terminal
@@ -108,8 +110,8 @@ enum Store {
     static let folder: URL = {
         let support = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let home = support.appendingPathComponent(world.map { "Search (\($0))" } ?? "Search", isDirectory: true)
-        if !testing {
+        let home = support.appendingPathComponent(world.map { "Search (\($0))" } ?? (beta ? "Search Beta" : "Search"), isDirectory: true)
+        if !testing && !beta {
             let old = support.appendingPathComponent("Office Browser", isDirectory: true)
             let files = FileManager.default
             if !files.fileExists(atPath: home.path), files.fileExists(atPath: old.path) {
