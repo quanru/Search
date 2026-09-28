@@ -28,18 +28,31 @@ enum Chromium {
         /// The app itself, to say so when it is on this Mac but its data
         /// isn't where it should be.
         let app: String
+        /// Some Chromium browsers keep passwords with a key Search does not
+        /// know how to read. Their bookmarks, history and extensions still
+        /// belong in the import list.
+        var importsPasswords = true
+        var rootOverride: URL? = nil
 
         var id: String { name }
 
-        var root: URL { Chromium.base.appendingPathComponent(folder, isDirectory: true) }
+        var root: URL {
+            if let rootOverride { return rootOverride }
+            if !Store.testing, let path = Store.settings.string(forKey: "import.folder.\(name)") {
+                return URL(fileURLWithPath: path, isDirectory: true)
+            }
+            return Chromium.base.appendingPathComponent(folder, isDirectory: true)
+        }
 
-        /// Every profile: a folder holding passwords, bookmarks or history.
+        /// Every profile: a folder holding passwords, bookmarks, history or
+        /// extensions. A browser used only for extensions still has something
+        /// to bring over.
         /// Most browsers keep one folder per profile ("Default", "Profile 1");
         /// Opera keeps its only profile in the browser's folder itself.
         var profiles: [URL] {
             let inside = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil, options: .skipsHiddenFiles)) ?? []
             return ([root] + inside).filter { folder in
-                ["Login Data", "Bookmarks", "History"].contains {
+                ["Login Data", "Bookmarks", "History", "Extensions"].contains {
                     FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path)
                 }
             }
@@ -54,7 +67,7 @@ enum Chromium {
 
         /// Every profile's passwords file, or the one profile's.
         func files(only: String? = nil) -> [URL] {
-            profiles(only: only).map { $0.appendingPathComponent("Login Data") }
+            (importsPasswords ? profiles(only: only) : []).map { $0.appendingPathComponent("Login Data") }
                 .filter { FileManager.default.fileExists(atPath: $0.path) }
         }
 
@@ -88,6 +101,7 @@ enum Chromium {
     static let known: [Source] = [
         Source(name: "Dia", folder: "Dia/User Data", service: "Dia Safe Storage", account: "Dia", app: "Dia.app"),
         Source(name: "Chrome", folder: "Google/Chrome", service: "Chrome Safe Storage", account: "Chrome", app: "Google Chrome.app"),
+        Source(name: "ego lite", folder: "Citro Labs/ego lite", service: "", account: "", app: "ego lite.app", importsPasswords: false),
         Source(name: "Arc", folder: "Arc/User Data", service: "Arc Safe Storage", account: "Arc", app: "Arc.app"),
         Source(name: "Brave", folder: "BraveSoftware/Brave-Browser", service: "Brave Safe Storage", account: "Brave", app: "Brave Browser.app"),
         Source(name: "Edge", folder: "Microsoft Edge", service: "Microsoft Edge Safe Storage", account: "Microsoft Edge", app: "Microsoft Edge.app"),
@@ -117,6 +131,12 @@ enum Chromium {
         known.filter { !$0.profiles.isEmpty }
     }
 
+    /// A folder selected in the macOS open panel grants Search access to
+    /// another browser's protected data. Remember its path for later imports.
+    static func remember(_ folder: URL, for source: Source) {
+        Store.settings.set(folder.path, forKey: "import.folder.\(source.name)")
+    }
+
     /// Browsers that are on this Mac with nothing found where their data
     /// should be — said by name, with where Search looked, rather than
     /// "no other browser found".
@@ -143,6 +163,7 @@ enum Chromium {
     /// The passwords of one profile, or of all of them when `profile` is
     /// nil. The key is asked for once, here, whichever it is.
     static func read(_ source: Source, profile: String? = nil) throws -> Found {
+        guard source.importsPasswords else { throw Trouble.unreadable }
         guard let passphrase = safeStorage(source) else { throw Trouble.noPassphrase }
         let key = stretch(passphrase)
 
