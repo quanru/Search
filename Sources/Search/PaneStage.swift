@@ -579,6 +579,11 @@ extension PaneStage {
         return out
     }
 
+    func frame(for tab: Tab.ID, in view: NSView) -> CGRect? {
+        guard let frame = placed()[tab] else { return nil }
+        return convert(frame, to: view)
+    }
+
     /// Pictures of the pages on screen, as they are. WebKit takes them in a
     /// frame or so; one slower than a twentieth of a second, and the change
     /// is a cut instead of a wait. Under Reduce Motion they are still

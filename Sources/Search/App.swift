@@ -352,6 +352,7 @@ struct ContentView: View {
 
     @State private var keys: Any?
     @State private var window: NSWindow?
+    @State private var findChrome: FindChrome?
     @State private var resting: RestingLights?
     /// The room the page leaves for the column and the strip, set without
     /// animation (see `make(room:after:)`); nil only before the window is up.
@@ -427,12 +428,6 @@ struct ContentView: View {
                     if browser.prefs.showsLinks { LinkBubble(status: browser.linkStatus) }
                 }
                 .overlay(alignment: .topTrailing) {
-                    if browser.finding {
-                        FindBar(browser: browser)
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-                }
-                .overlay(alignment: .topTrailing) {
                     if let assistant = browser.assisting, assistant.tab == tab.id {
                         AssistantPanel(browser: browser, assistant: assistant)
                             .padding(.top, browser.finding ? 64 : 14)
@@ -471,6 +466,19 @@ struct ContentView: View {
 
     private var sideOnRight: Bool {
         browser.prefs.sidebar && browser.prefs.sidePosition == .right
+    }
+
+    private func updateFindChrome() {
+        guard browser.finding, browser.active != nil,
+              let window else {
+            findChrome?.remove()
+            findChrome = nil
+            return
+        }
+        let chromeView = findChrome ?? FindChrome(browser: browser)
+        chromeView.place(in: window, top: chrome.height, right: sideOnRight ? chrome.width : 0,
+                         active: browser.active!.id)
+        if findChrome == nil { findChrome = chromeView }
     }
 
     /// Chrome going away gives the page its room at once, the page sliding
@@ -631,6 +639,15 @@ struct ContentView: View {
                 // there is to watch.
                 .animation(browser.fieldShowing ? Motion.settle : Motion.quick, value: browser.fieldShowing)
                 .background(WindowSetup { window = $0; dress($0) })
+                .onChange(of: browser.finding) { _, _ in updateFindChrome() }
+                .onChange(of: browser.prefs.splitView) { _, _ in updateFindChrome() }
+                .onChange(of: browser.prefs.sideWidth) { _, _ in updateFindChrome() }
+                .onChange(of: browser.prefs.sidePosition) { _, _ in updateFindChrome() }
+                .onChange(of: browser.activeID) { _, _ in updateFindChrome() }
+                .onChange(of: browser.activeSplit) { _, _ in updateFindChrome() }
+                .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResizeNotification)) { note in
+                    if let window, (note.object as? NSWindow) === window { updateFindChrome() }
+                }
                 .onChange(of: browser.prefs.sidebar) { _, _ in
                     DispatchQueue.main.async { Lights.refresh(window); measureLights() }
                 }

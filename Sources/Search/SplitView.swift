@@ -121,14 +121,6 @@ private struct PaneLayers: View {
                 LinkBubble(status: browser.linkStatus, page: paired ? tab.built : nil)
             }
         }
-        .overlay(alignment: .topTrailing) {
-            if browser.finding, focused {
-                FindBar(browser: browser, availableWidth: width)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .clipped()
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
-        }
         .overlay(alignment: .topLeading) {
             if let asked = browser.suggesting, asked.tab == tab.id {
                 AccountList(browser: browser, asked: asked)
