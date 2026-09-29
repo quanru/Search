@@ -85,6 +85,8 @@ So anyone can read exactly what a browser handling their passwords and history i
 - `./build.sh` — assembles a real, double-clickable `Search.app` in `build/`, ad-hoc signed so it runs on your own Mac
 - `SEARCH_BETA=1 ./build.sh` — assembles `build/beta/Search Beta.app` with its own bundle ID, settings, downloads, and updater state. Set `SEARCH_SIGN_IDENTITY` to your certificate name to sign it with your own identity.
 
+For a Beta GitHub Release, run `SEARCH_BETA=1 ./build.sh release dmg` and upload `build/beta/Search Beta.dmg` and `build/beta/Search Beta.zip`. Beta builds do not generate the production appcast.
+
 A build you make yourself won't be notarized or carry Office Commun's Developer ID, so the first launch needs a right-click → Open (or an allow in System Settings → Privacy & Security). That's expected — it's the same thing that happens with any app that isn't from the App Store or a notarized DMG. Your own build also keeps its passwords apart from a signed Search's: the keychain tells the two apart by their signatures.
 
 `./build.sh release dmg` also makes `Search.dmg` / `Search.zip`. `./build.sh release ship` additionally notarizes and staples — that step needs a Developer ID certificate and Apple credentials, so it only really does anything for Office Commun's own releases.

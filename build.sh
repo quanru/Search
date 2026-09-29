@@ -340,7 +340,12 @@ JSON
     echo "signed: $OUT/appcast.json.zip"
   fi
 }
-if [ "$STEP" = "dmg" ]; then write_appcast; exit 0; fi
+if [ "$STEP" = "dmg" ]; then
+  # Beta releases live on this fork's GitHub Releases page and the Beta app
+  # updates manually. The production appcast would point at Office Commun.
+  [ "${SEARCH_BETA:-0}" = "1" ] || write_appcast
+  exit 0
+fi
 
 # Notarisation: Apple looks both over. The ticket is stapled to the image,
 # so it opens on a Mac that has never seen this app and is offline; the ZIP

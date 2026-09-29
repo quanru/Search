@@ -356,26 +356,23 @@ struct SideBar: View {
         return (0..<rows).map { $0 < extra ? base + 1 : base }
     }
 
-    /// Where each square goes, in the order of the row. Each row splits the
-    /// column's width between its own squares — the row fills edge to edge,
-    /// not each cell on its own — and every row is as tall as the narrowest
-    /// cell allows, never taller than the classic square: past that a cell
-    /// turns into a wide, short button rather than a bigger icon.
+    /// Where each square goes, in the order of the row. All rows use the same
+    /// cell width, so the last row does not stretch two pins wider than the
+    /// three above them. Up to three pins still reserve three places.
     private func pinCells(_ count: Int) -> [CGRect] {
         let room = prefs.sideWidth - 20
         let gap = SideBar.pinGap
         let fits = Int((room + gap) / (SideBar.square + gap))
         let rows = SideBar.pinRows(count, most: min(4, max(1, fits)))
-        // A row of fewer than three keeps three places.
-        let slots = rows.map { rows.count == 1 ? max($0, min(3, fits)) : $0 }
-        let widths = slots.map { max(20, (room - CGFloat($0 - 1) * gap) / CGFloat($0)) }
-        let height = min(SideBar.square, widths.min() ?? SideBar.square)
+        let slots = max(rows.max() ?? 0, min(3, fits))
+        let width = max(20, (room - CGFloat(max(0, slots - 1)) * gap) / CGFloat(max(1, slots)))
+        let height = min(SideBar.square, width)
         var cells: [CGRect] = []
         for (row, n) in rows.enumerated() {
             for col in 0..<n {
-                cells.append(CGRect(x: CGFloat(col) * (widths[row] + gap),
+                cells.append(CGRect(x: CGFloat(col) * (width + gap),
                                     y: CGFloat(row) * (height + gap),
-                                    width: widths[row], height: height))
+                                    width: width, height: height))
             }
         }
         return cells
