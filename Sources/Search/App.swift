@@ -598,95 +598,102 @@ struct ContentView: View {
     }
 
     var body: some View {
-        window_
-            // The column folded away, and out again at the edge (see Fold.swift).
-            .overlay(alignment: sideOnRight ? .trailing : .leading) {
-                if fullscreenTab == nil { Fold(browser: browser, prefs: browser.prefs) }
-            }
-            .overlay(alignment: .bottom) { bars }
-            .overlay {
-                // Over the page only: the column, the strip and the bookmarks
-                // bar stay as they are, uncovered and in reach.
-                PeekLayer(browser: browser)
-                    .padding(.leading, sideOnRight ? 0 : chrome.width)
-                    .padding(.trailing, sideOnRight ? chrome.width : 0)
-                    .padding(.top, chrome.height)
-                    // From the window's own top edge, as the page is:
-                    // the title bar's band is page too.
-                    .ignoresSafeArea()
-            }
-            .overlay { field }
-            .overlay { panels }
-            .overlay { TabSwitcherOverlay(browser: browser, switcher: browser.tabSwitcher) }
-            .overlay(alignment: .topTrailing) {
-                if let job = browser.fileImport { ImportProgress(browser: browser, job: job) }
-            }
-            // The field comes on its spring, and goes quickly: once Return
-            // is pressed the page is on its way, and the field is not what
-            // there is to watch.
-            .animation(browser.fieldShowing ? Motion.settle : Motion.quick, value: browser.fieldShowing)
-            .background(WindowSetup { window = $0; dress($0) })
-            .onChange(of: browser.prefs.sidebar) { _, _ in
-                DispatchQueue.main.async { Lights.refresh(window); measureLights() }
-            }
-            .onChange(of: browser.prefs.sidePosition) { _, _ in
-                DispatchQueue.main.async { Lights.refresh(window); measureLights() }
-            }
-            .onChange(of: browser.prefs.sideWidth) { _, _ in
-                DispatchQueue.main.async { Lights.refresh(window); measureLights() }
-            }
-            // Stepping away to another app: macOS draws its own resting
-            // buttons, and on a light window they come out nearly white. Ours
-            // go on in their place until the app comes back.
-            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
-                browser.tabSwitcher.cancel()
-                measureLights()
-                resting?.isHidden = false
-                // Only the window you were in, or every window's video would come.
-                browser.appLeft()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { note in
-                if let window, (note.object as? NSWindow) === window { Browsers.becameKey(browser) }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { note in
-                if let window, (note.object as? NSWindow) === window { browser.tabSwitcher.cancel() }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) { note in
-                if let window, (note.object as? NSWindow) === window { browser.fullScreen = true }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification)) { note in
-                if let window, (note.object as? NSWindow) === window { browser.fullScreen = false }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                resting?.isHidden = true
-                browser.appBack()
-            }
-            .onChange(of: browser.fieldShowing) { _, showing in
-                if showing {
-                    DispatchQueue.main.async { browser.askFocus() }
-                } else {
-                    handBack()
+        GeometryReader { bounds in
+            window_
+                // A web page can report a large ideal width to SwiftUI. Keep the
+                // browser's own chrome anchored to the actual window when it is
+                // resized or zoomed, rather than centring an oversized root view.
+                .frame(width: bounds.size.width, height: bounds.size.height, alignment: .topLeading)
+                // The column folded away, and out again at the edge (see Fold.swift).
+                .overlay(alignment: sideOnRight ? .trailing : .leading) {
+                    if fullscreenTab == nil { Fold(browser: browser, prefs: browser.prefs) }
                 }
+                .overlay(alignment: .bottom) { bars }
+                .overlay {
+                    // Over the page only: the column, the strip and the bookmarks
+                    // bar stay as they are, uncovered and in reach.
+                    PeekLayer(browser: browser)
+                        .padding(.leading, sideOnRight ? 0 : chrome.width)
+                        .padding(.trailing, sideOnRight ? chrome.width : 0)
+                        .padding(.top, chrome.height)
+                        // From the window's own top edge, as the page is:
+                        // the title bar's band is page too.
+                        .ignoresSafeArea()
+                }
+                .overlay { field }
+                .overlay { panels }
+                .overlay { TabSwitcherOverlay(browser: browser, switcher: browser.tabSwitcher) }
+                .overlay(alignment: .topTrailing) {
+                    if let job = browser.fileImport { ImportProgress(browser: browser, job: job) }
+                }
+                // The field comes on its spring, and goes quickly: once Return
+                // is pressed the page is on its way, and the field is not what
+                // there is to watch.
+                .animation(browser.fieldShowing ? Motion.settle : Motion.quick, value: browser.fieldShowing)
+                .background(WindowSetup { window = $0; dress($0) })
+                .onChange(of: browser.prefs.sidebar) { _, _ in
+                    DispatchQueue.main.async { Lights.refresh(window); measureLights() }
+                }
+                .onChange(of: browser.prefs.sidePosition) { _, _ in
+                    DispatchQueue.main.async { Lights.refresh(window); measureLights() }
+                }
+                .onChange(of: browser.prefs.sideWidth) { _, _ in
+                    DispatchQueue.main.async { Lights.refresh(window); measureLights() }
+                }
+                // Stepping away to another app: macOS draws its own resting
+                // buttons, and on a light window they come out nearly white. Ours
+                // go on in their place until the app comes back.
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+                    browser.tabSwitcher.cancel()
+                    measureLights()
+                    resting?.isHidden = false
+                    // Only the window you were in, or every window's video would come.
+                    browser.appLeft()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { note in
+                    if let window, (note.object as? NSWindow) === window { Browsers.becameKey(browser) }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { note in
+                    if let window, (note.object as? NSWindow) === window { browser.tabSwitcher.cancel() }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) { note in
+                    if let window, (note.object as? NSWindow) === window { browser.fullScreen = true }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification)) { note in
+                    if let window, (note.object as? NSWindow) === window { browser.fullScreen = false }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                    resting?.isHidden = true
+                    browser.appBack()
+                }
+                .onChange(of: browser.fieldShowing) { _, showing in
+                    if showing {
+                        DispatchQueue.main.async { browser.askFocus() }
+                    } else {
+                        handBack()
+                    }
+                }
+                .onChange(of: browser.activeID) { _, _ in handBack() }
+                .animation(Motion.settle, value: browser.recalling)
+                .animation(Motion.settle, value: browser.hoarding)
+                .animation(Motion.settle, value: browser.tuning)
+                .animation(Motion.settle, value: browser.welcoming)
+                .animation(Motion.settle, value: browser.bookmarking)
+                .animation(Motion.settle, value: browser.managing)
+                .animation(Motion.settle, value: browser.newsShowing)
+                .animation(Motion.settle, value: browser.notesShowing)
+                .animation(Motion.settle, value: browser.bringingIn != nil)
+                .animation(Motion.settle, value: browser.reviewing)
+            .onAppear {
+                watchKeys()
+                browser.askFocus()
+                // Addresses from other apps have somewhere to go from here on.
+                Links.hand(to: browser)
+                BookmarkMenu.shared.start(for: browser)
+                Browsers.watchFrames()
             }
-            .onChange(of: browser.activeID) { _, _ in handBack() }
-            .animation(Motion.settle, value: browser.recalling)
-            .animation(Motion.settle, value: browser.hoarding)
-            .animation(Motion.settle, value: browser.tuning)
-            .animation(Motion.settle, value: browser.welcoming)
-            .animation(Motion.settle, value: browser.bookmarking)
-            .animation(Motion.settle, value: browser.managing)
-            .animation(Motion.settle, value: browser.newsShowing)
-            .animation(Motion.settle, value: browser.notesShowing)
-            .animation(Motion.settle, value: browser.bringingIn != nil)
-            .animation(Motion.settle, value: browser.reviewing)
-        .onAppear {
-            watchKeys()
-            browser.askFocus()
-            // Addresses from other apps have somewhere to go from here on.
-            Links.hand(to: browser)
-            BookmarkMenu.shared.start(for: browser)
-            Browsers.watchFrames()
         }
+        .ignoresSafeArea()
     }
 
     /// Give the keyboard back to the page once the field is done with it.
