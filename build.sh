@@ -70,6 +70,18 @@ BUILD="$(date +%Y%m%d%H%M)"
 # older Mac is not handed a build it can't open.
 MINIMUM="14.0"
 
+# A downloadable Beta needs a Developer ID signature and notarization. Check
+# before touching existing artifacts so a failed release leaves them intact.
+IDENTITY="${SEARCH_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null \
+  | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"' || true)}"
+if [ "${SEARCH_BETA:-0}" = "1" ] && [ "$STEP" != "app" ]; then
+  case "$IDENTITY" in
+    "Developer ID Application: "*) ;;
+    *) echo "Beta distribution requires a Developer ID Application identity; Apple Development and Apple Distribution certificates cannot sign a downloadable Beta" >&2; exit 1 ;;
+  esac
+  [ "$STEP" = "ship" ] || { echo "Beta distribution must be notarized: use SEARCH_BETA=1 ./build.sh release ship" >&2; exit 1; }
+fi
+
 # -Osize for a release: 14% less binary (5.39 → 4.65 MB) at the same speed —
 # launch 337 against 338 ms, a scroll frame 0.26 against 0.25 ms, a key typed
 # 0.41 ms either way, measured interleaved on 1.0.4 (27 Sep 2026).
@@ -206,8 +218,6 @@ PLIST
 # runtime Gatekeeper insists on for anything notarised; otherwise ad-hoc,
 # which is enough for the app to run on the machine that built it — and
 # which the updater refuses to swap anything in under.
-IDENTITY="${SEARCH_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null \
-  | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"' || true)}"
 # Passkeys need an entitlement Apple grants to browsers on request, and a
 # Developer ID provisioning profile that carries it. With the profile next to
 # this script, both go in; without it, the app is signed as before, because
@@ -355,5 +365,9 @@ for FILE in "$DMG" "$ZIP"; do
   xcrun notarytool submit "$FILE" --keychain-profile "${SEARCH_NOTARY_PROFILE:-search}" --wait
 done
 xcrun stapler staple "$DMG"
-write_appcast
-echo "shipped: $DMG, $ZIP, $OUT/appcast.json and its signed ZIP — ./publish.sh <folder> puts them on the site"
+if [ "${SEARCH_BETA:-0}" = "1" ]; then
+  echo "shipped Beta: $DMG and $ZIP — upload them to the fork's GitHub Release"
+else
+  write_appcast
+  echo "shipped: $DMG, $ZIP, $OUT/appcast.json and its signed ZIP — ./publish.sh <folder> puts them on the site"
+fi
