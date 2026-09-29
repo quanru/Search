@@ -11,6 +11,7 @@
 #
 #   SEARCH_ARCH=x86_64 ./build.sh release ship
 #                              the same for Intel Macs, into build/intel/
+#   SEARCH_BETA=1 ./build.sh    separate Search Beta.app and profile, in build/beta/
 #
 # Same shape as the one next door: SwiftPM builds the executable, and a macOS
 # app bundle is just a folder with a plist and the binary in the right place.
@@ -52,8 +53,15 @@ case "$ARCH" in
   x86_64) OUT="build/intel"; SUBFOLDER="/intel" ;;
   *) echo "SEARCH_ARCH is arm64 or x86_64, not “$ARCH”" >&2; exit 1 ;;
 esac
-APP="$OUT/Search.app"
-NAME="Search"
+if [ "${SEARCH_BETA:-0}" = "1" ]; then
+  OUT="$OUT/beta"
+  NAME="Search Beta"
+  BUNDLE_ID="com.officecommun.search.beta"
+else
+  NAME="Search"
+  BUNDLE_ID="com.officecommun.search"
+fi
+APP="$OUT/$NAME.app"
 VERSION="$(tr -d '[:space:]' < VERSION)"
 # A build number that only ever goes up, so the updater can tell newer from
 # older without parsing version strings.
@@ -134,7 +142,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleName</key><string>$NAME</string>
   <key>CFBundleDisplayName</key><string>$NAME</string>
   <key>CFBundleExecutable</key><string>$NAME</string>
-  <key>CFBundleIdentifier</key><string>com.officecommun.search</string>
+  <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$BUILD</string>
