@@ -28,4 +28,15 @@ final class BrowserDiscoveryTests: XCTestCase {
         XCTAssertTrue(source.files().isEmpty)
         XCTAssertEqual(Chromium.preview(of: source, profile: nil).passwords, 0)
     }
+
+    func testChosenFolderStaysInMemory() {
+        let source = Chromium.Source(name: "Fixture-\(UUID().uuidString)", folder: "Fixture", service: "", account: "", app: "")
+        let selected = FileManager.default.temporaryDirectory.appendingPathComponent("other-browser")
+
+        Chromium.useForSession(selected, for: source)
+
+        XCTAssertEqual(Chromium.chosenRoot(for: source.name), selected)
+        XCTAssertEqual(source.root, selected)
+        XCTAssertNil(Store.settings.string(forKey: "import.folder.\(source.name)"))
+    }
 }

@@ -211,7 +211,7 @@ struct ImportPanel: View {
                 folderError = "No browser profile was found in \(folder.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")). Choose the folder that contains Default or Profile 1."
                 return
             }
-            Chromium.remember(folder, for: source)
+            Chromium.useForSession(folder, for: source)
             folderError = nil
             previews = [:]
             profiles = [:]

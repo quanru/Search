@@ -38,8 +38,8 @@ enum Chromium {
 
         var root: URL {
             if let rootOverride { return rootOverride }
-            if !Store.testing, let path = Store.settings.string(forKey: "import.folder.\(name)") {
-                return URL(fileURLWithPath: path, isDirectory: true)
+            if !Store.testing, let selected = Chromium.chosenRoot(for: name) {
+                return selected
             }
             return Chromium.base.appendingPathComponent(folder, isDirectory: true)
         }
@@ -131,10 +131,22 @@ enum Chromium {
         known.filter { !$0.profiles.isEmpty }
     }
 
-    /// A folder selected in the macOS open panel grants Search access to
-    /// another browser's protected data. Remember its path for later imports.
-    static func remember(_ folder: URL, for source: Source) {
-        Store.settings.set(folder.path, forKey: "import.folder.\(source.name)")
+    /// A picked folder is trusted only while this process is running. A saved
+    /// path could be changed by another process and silently redirect imports.
+    private static let selectionLock = NSLock()
+    private static var selectedRoots: [String: URL] = [:]
+
+    static func chosenRoot(for name: String) -> URL? {
+        selectionLock.lock()
+        defer { selectionLock.unlock() }
+        return selectedRoots[name]
+    }
+
+    static func useForSession(_ folder: URL, for source: Source) {
+        guard !Store.testing else { return }
+        selectionLock.lock()
+        defer { selectionLock.unlock() }
+        selectedRoots[source.name] = folder
     }
 
     /// Browsers that are on this Mac with nothing found where their data
