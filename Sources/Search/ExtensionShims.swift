@@ -2676,12 +2676,60 @@ enum ExtensionShims {
           set(event, "hasListeners", () => listeners.size > 0);
           return port;
         };
+        // WebKit can strand a content script's Port when its MV3 worker is
+        // stopped: postMessage still succeeds, but no message arrives and
+        // onDisconnect never fires. A round trip on that very Port keeps an
+        // active worker alive and lets the extension reconnect if it is gone.
+        const watched = new WeakSet();
+        const watch = (port, reply) => {
+          const event = port && port.onMessage, post = port && port.postMessage;
+          if (!event || typeof event.addListener !== "function" || typeof post !== "function" || watched.has(port)) return port;
+          watched.add(port);
+          const listeners = new Set();
+          const token = Math.random().toString(36).slice(2);
+          let awaiting = 0, missed = 0, tick = null, deadline = null;
+          const stop = () => { clearInterval(tick); clearTimeout(deadline); tick = null; };
+          event.addListener.call(event, (message, ...rest) => {
+            const probe = message && message.__searchPortProbe;
+            if (Array.isArray(probe) && probe.length === 2) {
+              if (reply) { try { post.call(port, { __searchPortProbe: probe }); } catch (e) {} }
+              else if (probe[0] === token && probe[1] === awaiting) {
+                clearTimeout(deadline); deadline = null; awaiting = 0; missed = 0;
+              }
+              return;
+            }
+            for (const f of [...listeners]) { try { f(message, ...rest); } catch (e) { setTimeout(() => { throw e; }); } }
+          });
+          set(port, "onMessage", event);
+          set(event, "addListener", (f) => { listeners.add(f); });
+          set(event, "removeListener", (f) => { listeners.delete(f); });
+          set(event, "hasListener", (f) => listeners.has(f));
+          set(event, "hasListeners", () => listeners.size > 0);
+          if (!reply) {
+            const disconnect = port.disconnect;
+            const probe = () => {
+              if (awaiting) return;
+              awaiting = Date.now();
+              try { post.call(port, { __searchPortProbe: [token, awaiting] }); }
+              catch (e) { stop(); try { disconnect.call(port); } catch (e) {} return; }
+              deadline = setTimeout(() => {
+                deadline = null; awaiting = 0;
+                if (++missed >= 2) { stop(); try { disconnect.call(port); } catch (e) {} }
+              }, 5000);
+            };
+            port.onDisconnect.addListener(stop);
+            tick = setInterval(probe, 10000);
+            probe();
+          }
+          return port;
+        };
         const connect = runtime.connect;
         // Only a port to the extension itself: another extension would hear
         // the numbered wrapper, not the message.
         put(runtime, "connect", (...args) => {
           const port = connect.apply(runtime, args);
-          return !ownWorld || (typeof args[0] === "string" && args[0] !== runtime.id) ? port : number(port);
+          if (typeof args[0] === "string" && args[0] !== runtime.id) return port;
+          return ownWorld ? number(port) : watch(port, false);
         });
         const onConnect = runtime.onConnect;
         const add = onConnect.addListener, remove = onConnect.removeListener, has = onConnect.hasListener;
@@ -2694,7 +2742,7 @@ enum ExtensionShims {
           if (!w) {
             w = (port) => {
               const given = port && port.sender, sender = untabbed(given);
-              port = fromOwn(port) ? number(port) : port;
+              port = fromOwn(port) ? number(port) : watch(port, true);
               // WebKit makes a port's sender afresh at each look, over
               // anything set on the port: the port is seen through a proxy.
               if (sender !== given) {
