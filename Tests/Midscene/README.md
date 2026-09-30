@@ -102,7 +102,9 @@ hosted links do not resolve.
 `npm test` calls the official `runTestProject` API; Midscene Test owns execution,
 step timeouts, lifecycle teardown, outcomes and the unified native framework
 report. The entry script only clears old output and exports case metadata for
-CI Summary. `npm run nodes` generates the official Node Spec.
+CI Summary. `npm run nodes` generates the official Node Spec and is also part
+of the secret-free checks. `tsx` is pinned for compatibility with the framework
+CLI's CommonJS config loader.
 
 Each case also saves a standalone Midscene HTML report with screenshots embedded,
 a final PNG, and a `results.json` entry. Reports are written even after AI
