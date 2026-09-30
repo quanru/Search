@@ -333,7 +333,8 @@ final class DownloadLifecycleTests: XCTestCase {
             if condition() { return }
             try await Task.sleep(nanoseconds: 20_000_000)
         }
-        XCTFail("Timed out waiting for the download state", file: file, line: line)
+        let entries = browser.fetches.entries.map { "\($0.name): \($0.state), \($0.completedBytes) bytes" }
+        XCTFail("Timed out waiting for the download state; entries: \(entries); completed: \(browser.loot.kept.map(\.name))", file: file, line: line)
         throw WaitError.timedOut
     }
 
