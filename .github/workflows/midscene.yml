@@ -100,6 +100,7 @@ jobs:
       - name: Build Search test app
         run: ./build.sh debug
       - name: Run visual shard
+        id: run-shard
         working-directory: Tests/Midscene
         env:
           MIDSCENE_DESKTOP_ENABLED: '1'
@@ -110,6 +111,7 @@ jobs:
           MIDSCENE_MODEL_FAMILY: ${{ secrets.MIDSCENE_MODEL_FAMILY }}
         run: npm test
       - name: Preserve shard reports even on failure
+        id: upload-shard
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -117,9 +119,19 @@ jobs:
           path: Tests/Midscene/midscene_run/
           if-no-files-found: warn
           retention-days: 14
+      - name: Add shard results to the job Summary
+        if: always()
+        continue-on-error: true
+        working-directory: Tests/Midscene
+        env:
+          MIDSCENE_SHARD: ${{ matrix.shard }}
+          MIDSCENE_REPORT_URL: ${{ vars.MIDSCENE_PAGES_URL != '' && format('{0}/runs/{1}/{2}/midscene-{3}', vars.MIDSCENE_PAGES_URL, github.run_id, github.run_attempt, matrix.shard) || '' }}
+          MIDSCENE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          MIDSCENE_PRODUCER_RESULT: ${{ steps.run-shard.outcome == 'success' && steps.upload-shard.outcome == 'success' && 'success' || 'failure' }}
+        run: npm run report -- --summary-only
   reports:
     needs: visual
-    if: always() && needs.visual.result != 'skipped'
+    if: always() && !cancelled() && needs.visual.result != 'skipped'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -146,6 +158,8 @@ jobs:
         working-directory: Tests/Midscene
         env:
           MIDSCENE_REPORT_URL: ${{ vars.MIDSCENE_PAGES_URL != '' && format('{0}/runs/{1}/{2}', vars.MIDSCENE_PAGES_URL, github.run_id, github.run_attempt) || '' }}
+          MIDSCENE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          MIDSCENE_PRODUCER_RESULT: ${{ needs.visual.result }}
         run: npm run report
       - name: Preserve all available reports
         if: always()
@@ -170,7 +184,7 @@ jobs:
         run: exit 1
   publish:
     needs: reports
-    if: always() && needs.reports.result != 'skipped' && vars.MIDSCENE_PAGES_URL != ''
+    if: always() && !cancelled() && needs.reports.result != 'skipped' && vars.MIDSCENE_PAGES_URL != ''
     runs-on: ubuntu-24.04
     permissions:
       pages: write

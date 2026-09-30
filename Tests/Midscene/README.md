@@ -105,10 +105,16 @@ these reports. Configure the `github-pages` environment to allow the default
 branch. Published paths include both run ID and attempt number. Pages publishes
 the latest workflow's reports; older reports remain downloadable as artifacts
 for 14 days, but their hosted URLs expire when the next site replaces them.
-With Pages enabled, Summary tables embed each case's PNG screenshot and link
-to its exact native HTML. Without it, Summary provides artifact-relative paths;
-GitHub artifacts cannot serve inline images or HTML. Check the publish job if
-hosted links do not resolve.
+Each shard and the combined report job render Rome's Summary layout: failed,
+not-run and incomplete cases appear first, and passed cases live in a collapsed
+appendix. Tables show shard, case, a clickable 160-pixel screenshot, status or
+failure reason, and duration. Model name and family are recorded separately from
+credentials. Native report and artifact download links appear above the tables.
+With Pages enabled, case names and screenshots open the recorded framework step
+using the native report's `runner-step` anchor. Available framework step images
+take precedence over teardown screenshots; standalone reports remain the fallback
+without invented step anchors. Without Pages, download the artifact to inspect
+HTML and images. Check the publish job if hosted links do not resolve.
 
 `Recover Midscene reports` can replay existing shard artifacts through native
 merging and Pages publication without invoking a model. Manually dispatch it
@@ -131,7 +137,10 @@ a final PNG, and a `results.json` entry. Reports are written even after AI
 assertion failure. The package pins Midscene versions in its npm lockfile.
 The report job downloads shards into separate directories, merges via
 `mergeReportFiles` from `@midscene/core`, and builds a Markdown case table from
-the manifest. It never creates a substitute HTML report.
+the manifest. When every expected case has one matching native framework report,
+it merges those reports to preserve the Midscene Test case and step view. Otherwise
+it falls back to available standalone SDK reports. It never creates a substitute
+HTML report, and always keeps the originals.
 
 A missing case/report/screenshot or failed merge makes the report job fail.
 Per-case reports remain in the combined artifact and can still be published

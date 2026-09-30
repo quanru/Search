@@ -58,6 +58,7 @@ jobs:
         working-directory: Tests/Midscene
         env:
           MIDSCENE_REPORT_URL: ${{ vars.MIDSCENE_PAGES_URL != '' && format('{0}/runs/{1}/{2}', vars.MIDSCENE_PAGES_URL, github.run_id, github.run_attempt) || '' }}
+          MIDSCENE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           SOURCE_RUN: ${{ inputs.source_run || vars.MIDSCENE_REPORT_SOURCE_RUN }}
           SOURCE_REPOSITORY: ${{ github.repository }}
         run: |
