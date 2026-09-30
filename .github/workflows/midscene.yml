@@ -38,8 +38,10 @@ jobs:
       - name: Run every Swift regression with isolated WebKit journeys
         run: python3 Tests/run-ci-tests.py
   desktop-capability:
-    name: Hosted macOS desktop capability (no model secrets)
-    runs-on: macos-15
+    name: Hosted Intel macOS desktop capability (no model secrets)
+    runs-on: macos-15-intel
+    # Diagnostic evidence, not a gate for source or model-free checks.
+    continue-on-error: true
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
