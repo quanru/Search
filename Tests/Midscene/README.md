@@ -64,7 +64,8 @@ npm run report
 ```
 
 `SEARCH_E2E_APP` can override the built app path. The default is
-`../../build/Search.app`, relative to `Tests/Midscene`. Missing credentials,
+`../../build/Search.app` on Apple Silicon or `../../build/intel/Search.app` on Intel,
+relative to `Tests/Midscene`. Missing credentials,
 unknown shards and absent builds fail before any desktop agent is created.
 The desktop opt-in is mandatory. No model retry is automatic: investigate the
 native HTML before rerunning a failed journey.
@@ -87,6 +88,10 @@ checks on 2026-09-30, exposing a 1920×1080 display. In the same check, ARM
 No self-hosted runner is required. Set repository secrets `MIDSCENE_MODEL_API_KEY`,
 `MIDSCENE_MODEL_NAME`, `MIDSCENE_MODEL_BASE_URL`, `MIDSCENE_MODEL_FAMILY` for a
 supported vision model. Install/build steps do not receive those secrets.
+The model endpoint must be reachable from GitHub's hosted network. Desktop
+availability does not imply access to an internal model gateway: a connection
+timeout should be resolved with a reachable provider or an approved runner with
+the necessary network access, rather than by changing assertions or adding retries.
 Both matrix shards run serially with `fail-fast: false`; a concurrency group
 also serializes separate workflow runs. Each hosted job gets a fresh VM.
 
@@ -125,8 +130,17 @@ shard deletes old `midscene_run`; assembling a report removes its old native
 merge before processing the current results. Tests cover exact links, screenshots,
 merge failure fallback and incomplete reruns.
 
+A per-case runtime JSON records only the owned test world's bookmarks and process
+identity, so isolation failures can be distinguished from UI assertion failures.
+The setup raises the owned process's window and verifies its foreground PID.
+Visual CI runs independently of the Swift regression job; failures in either
+suite remain failures, and a Swift failure does not suppress visual evidence.
+
 A shard timeout or setup failure may yield no report for its unfinished cases;
 the aggregate Summary records those cases as missing rather than passed. Job
-logs retain startup errors. The harness checks were verified without model
-credentials; visual journeys must be calibrated on the configured desktop and
-model before treating them as a release gate.
+logs retain startup errors. Model execution was exercised locally and in hosted
+CI. Hosted Intel CI verified isolated app startup and native report publication,
+but the selected internal model endpoint timed out from GitHub's network. Local
+AI assertions passed navigation and file import; repeated import reported duplicate
+entries and needs further investigation. Visual journeys are not yet a passing
+release gate.
