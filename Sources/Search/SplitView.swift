@@ -31,7 +31,8 @@ struct SplitStage: View {
                     case .closeBoth: browser.closeSplit()
                     }
                 },
-                hover: { hovered = $0 }
+                hover: { hovered = $0 },
+                find: browser.finding ? browser : nil
             )
             ForEach(shown) { tab in
                 if let frame = frames[tab.id] {

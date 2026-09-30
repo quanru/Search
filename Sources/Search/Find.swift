@@ -91,6 +91,8 @@ struct FindBar: View {
         .shadow(color: .black.opacity(0.10), radius: 18, y: 5)
         .padding(.top, 12)
         .padding(.trailing, 14)
+        .frame(maxWidth: availableWidth == nil ? nil : .infinity,
+               maxHeight: availableWidth == nil ? nil : .infinity, alignment: .topTrailing)
         .animation(Motion.quick, value: browser.missed)
         .onAppear(perform: focus)
         .onChange(of: browser.findFocus) { _, _ in focus() }
@@ -125,49 +127,4 @@ struct FindBar: View {
         .accessibilityHint(help)
         .help(help)
     }
-}
-
-/// WebKit's native view can paint over SwiftUI overlays on the page. Keep the
-/// find controls in an AppKit sibling above the content view instead.
-@MainActor
-final class FindChrome {
-    private let browser: Browser
-    private let host: NSHostingView<FindBar>
-
-    init(browser: Browser) {
-        self.browser = browser
-        host = NSHostingView(rootView: FindBar(browser: browser))
-        host.wantsLayer = true
-        host.layer?.backgroundColor = NSColor.clear.cgColor
-        host.layer?.zPosition = 20
-    }
-
-    func place(in window: NSWindow, top: CGFloat, right: CGFloat, active: Tab.ID) {
-        guard let content = window.contentView, let frame = content.superview else { return }
-        let page = pane(in: content)?.frame(for: active, in: content)
-            ?? NSRect(x: 0, y: content.isFlipped ? top : 0,
-                      width: content.bounds.width - right,
-                      height: content.bounds.height - top)
-        let width = min(390, max(160, page.width))
-        let height: CGFloat = 60
-        host.rootView = FindBar(browser: browser, availableWidth: page.width)
-        let rect = NSRect(x: page.maxX - width,
-                          y: content.isFlipped ? page.minY : page.maxY - height,
-                          width: width, height: height)
-        host.frame = content.convert(rect, to: frame)
-        if host.superview !== frame {
-            host.removeFromSuperview()
-            frame.addSubview(host, positioned: .above, relativeTo: content)
-        }
-    }
-
-    private func pane(in view: NSView) -> PaneStage? {
-        if let stage = view as? PaneStage { return stage }
-        for child in view.subviews {
-            if let stage = pane(in: child) { return stage }
-        }
-        return nil
-    }
-
-    func remove() { host.removeFromSuperview() }
 }

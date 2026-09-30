@@ -52,7 +52,7 @@ struct SearchApp: App {
                     .shortcut("file.newTab")
                 Button("New Private Tab") { browser.newShyTab() }
                     .shortcut("file.newPrivateTab")
-                Button("Reopen Closed Tab") { browser.reopen() }
+                Button(browser.reopenTitle) { browser.reopen() }
                     .shortcut("file.reopen")
                     .disabled(browser.ghosts.isEmpty && Browsers.lastClosedAt == nil)
                 Divider()
@@ -65,7 +65,7 @@ struct SearchApp: App {
                 Button("Bring Things Over…") { browser.bringingIn = "" }
                     .shortcut("file.import")
                 Divider()
-                Button("Close Tab") { if let tab = browser.active { browser.close(tab) } }
+                Button("Close Tab") { browser.closeFront() }
                     .shortcut("file.closeTab")
             }
             CommandGroup(replacing: .printItem) {
@@ -352,7 +352,6 @@ struct ContentView: View {
 
     @State private var keys: Any?
     @State private var window: NSWindow?
-    @State private var findChrome: FindChrome?
     @State private var resting: RestingLights?
     /// The room the page leaves for the column and the strip, set without
     /// animation (see `make(room:after:)`); nil only before the window is up.
@@ -377,7 +376,12 @@ struct ContentView: View {
             // it and is resized once, not on every frame of the slide: laid out
             // again thirty times a second, the page juddered along its right
             // edge and overshot the window with the spring (see `room`).
-            stage
+            // The native page's previous bounds are not its ideal size.
+            // Keep that measurement inside the space assigned to the page,
+            // so shrinking a window cannot push the browser chrome outside it.
+            GeometryReader { area in
+                stage.frame(width: area.size.width, height: area.size.height, alignment: .topLeading)
+            }
                 .padding(.leading, sideOnRight ? 0 : roomed.width)
                 .padding(.trailing, sideOnRight ? roomed.width : 0)
                 .padding(.top, roomed.height)
@@ -428,6 +432,12 @@ struct ContentView: View {
                     if browser.prefs.showsLinks { LinkBubble(status: browser.linkStatus) }
                 }
                 .overlay(alignment: .topTrailing) {
+                    if browser.finding {
+                        FindBar(browser: browser)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                }
+                .overlay(alignment: .topTrailing) {
                     if let assistant = browser.assisting, assistant.tab == tab.id {
                         AssistantPanel(browser: browser, assistant: assistant)
                             .padding(.top, browser.finding ? 64 : 14)
@@ -466,19 +476,6 @@ struct ContentView: View {
 
     private var sideOnRight: Bool {
         browser.prefs.sidebar && browser.prefs.sidePosition == .right
-    }
-
-    private func updateFindChrome() {
-        guard browser.finding, browser.active != nil,
-              let window else {
-            findChrome?.remove()
-            findChrome = nil
-            return
-        }
-        let chromeView = findChrome ?? FindChrome(browser: browser)
-        chromeView.place(in: window, top: chrome.height, right: sideOnRight ? chrome.width : 0,
-                         active: browser.active!.id)
-        if findChrome == nil { findChrome = chromeView }
     }
 
     /// Chrome going away gives the page its room at once, the page sliding
@@ -606,111 +603,95 @@ struct ContentView: View {
     }
 
     var body: some View {
-        GeometryReader { bounds in
-            window_
-                // A web page can report a large ideal width to SwiftUI. Keep the
-                // browser's own chrome anchored to the actual window when it is
-                // resized or zoomed, rather than centring an oversized root view.
-                .frame(width: bounds.size.width, height: bounds.size.height, alignment: .topLeading)
-                // The column folded away, and out again at the edge (see Fold.swift).
-                .overlay(alignment: sideOnRight ? .trailing : .leading) {
-                    if fullscreenTab == nil { Fold(browser: browser, prefs: browser.prefs) }
-                }
-                .overlay(alignment: .bottom) { bars }
-                .overlay {
-                    // Over the page only: the column, the strip and the bookmarks
-                    // bar stay as they are, uncovered and in reach.
-                    PeekLayer(browser: browser)
-                        .padding(.leading, sideOnRight ? 0 : chrome.width)
-                        .padding(.trailing, sideOnRight ? chrome.width : 0)
-                        .padding(.top, chrome.height)
-                        // From the window's own top edge, as the page is:
-                        // the title bar's band is page too.
-                        .ignoresSafeArea()
-                }
-                .overlay { field }
-                .overlay { panels }
-                .overlay { TabSwitcherOverlay(browser: browser, switcher: browser.tabSwitcher) }
-                .overlay(alignment: .topTrailing) {
-                    if let job = browser.fileImport { ImportProgress(browser: browser, job: job) }
-                }
-                // The field comes on its spring, and goes quickly: once Return
-                // is pressed the page is on its way, and the field is not what
-                // there is to watch.
-                .animation(browser.fieldShowing ? Motion.settle : Motion.quick, value: browser.fieldShowing)
-                .background(WindowSetup { window = $0; dress($0) })
-                .onChange(of: browser.finding) { _, _ in updateFindChrome() }
-                .onChange(of: browser.prefs.splitView) { _, _ in updateFindChrome() }
-                .onChange(of: browser.prefs.sideWidth) { _, _ in updateFindChrome() }
-                .onChange(of: browser.prefs.sidePosition) { _, _ in updateFindChrome() }
-                .onChange(of: browser.activeID) { _, _ in updateFindChrome() }
-                .onChange(of: browser.activeSplit) { _, _ in updateFindChrome() }
-                .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResizeNotification)) { note in
-                    if let window, (note.object as? NSWindow) === window { updateFindChrome() }
-                }
-                .onChange(of: browser.prefs.sidebar) { _, _ in
-                    DispatchQueue.main.async { Lights.refresh(window); measureLights() }
-                }
-                .onChange(of: browser.prefs.sidePosition) { _, _ in
-                    DispatchQueue.main.async { Lights.refresh(window); measureLights() }
-                }
-                .onChange(of: browser.prefs.sideWidth) { _, _ in
-                    DispatchQueue.main.async { Lights.refresh(window); measureLights() }
-                }
-                // Stepping away to another app: macOS draws its own resting
-                // buttons, and on a light window they come out nearly white. Ours
-                // go on in their place until the app comes back.
-                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
-                    browser.tabSwitcher.cancel()
-                    measureLights()
-                    resting?.isHidden = false
-                    // Only the window you were in, or every window's video would come.
-                    browser.appLeft()
-                }
-                .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { note in
-                    if let window, (note.object as? NSWindow) === window { Browsers.becameKey(browser) }
-                }
-                .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { note in
-                    if let window, (note.object as? NSWindow) === window { browser.tabSwitcher.cancel() }
-                }
-                .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) { note in
-                    if let window, (note.object as? NSWindow) === window { browser.fullScreen = true }
-                }
-                .onReceive(NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification)) { note in
-                    if let window, (note.object as? NSWindow) === window { browser.fullScreen = false }
-                }
-                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                    resting?.isHidden = true
-                    browser.appBack()
-                }
-                .onChange(of: browser.fieldShowing) { _, showing in
-                    if showing {
-                        DispatchQueue.main.async { browser.askFocus() }
-                    } else {
-                        handBack()
-                    }
-                }
-                .onChange(of: browser.activeID) { _, _ in handBack() }
-                .animation(Motion.settle, value: browser.recalling)
-                .animation(Motion.settle, value: browser.hoarding)
-                .animation(Motion.settle, value: browser.tuning)
-                .animation(Motion.settle, value: browser.welcoming)
-                .animation(Motion.settle, value: browser.bookmarking)
-                .animation(Motion.settle, value: browser.managing)
-                .animation(Motion.settle, value: browser.newsShowing)
-                .animation(Motion.settle, value: browser.notesShowing)
-                .animation(Motion.settle, value: browser.bringingIn != nil)
-                .animation(Motion.settle, value: browser.reviewing)
-            .onAppear {
-                watchKeys()
-                browser.askFocus()
-                // Addresses from other apps have somewhere to go from here on.
-                Links.hand(to: browser)
-                BookmarkMenu.shared.start(for: browser)
-                Browsers.watchFrames()
+        window_
+            // The column folded away, and out again at the edge (see Fold.swift).
+            .overlay(alignment: sideOnRight ? .trailing : .leading) {
+                if fullscreenTab == nil { Fold(browser: browser, prefs: browser.prefs) }
             }
+            .overlay(alignment: .bottom) { bars }
+            .overlay {
+                // Over the page only: the column, the strip and the bookmarks
+                // bar stay as they are, uncovered and in reach.
+                PeekLayer(browser: browser)
+                    .padding(.leading, sideOnRight ? 0 : chrome.width)
+                    .padding(.trailing, sideOnRight ? chrome.width : 0)
+                    .padding(.top, chrome.height)
+                    // From the window's own top edge, as the page is:
+                    // the title bar's band is page too.
+                    .ignoresSafeArea()
+            }
+            .overlay { field }
+            .overlay { panels }
+            .overlay { TabSwitcherOverlay(browser: browser, switcher: browser.tabSwitcher) }
+            .overlay(alignment: .topTrailing) {
+                if let job = browser.fileImport { ImportProgress(browser: browser, job: job) }
+            }
+            // The field comes on its spring, and goes quickly: once Return
+            // is pressed the page is on its way, and the field is not what
+            // there is to watch.
+            .animation(browser.fieldShowing ? Motion.settle : Motion.quick, value: browser.fieldShowing)
+            .background(WindowSetup { window = $0; dress($0) })
+            .onChange(of: browser.prefs.sidebar) { _, _ in
+                DispatchQueue.main.async { Lights.refresh(window); measureLights() }
+            }
+            .onChange(of: browser.prefs.sidePosition) { _, _ in
+                DispatchQueue.main.async { Lights.refresh(window); measureLights() }
+            }
+            .onChange(of: browser.prefs.sideWidth) { _, _ in
+                DispatchQueue.main.async { Lights.refresh(window); measureLights() }
+            }
+            // Stepping away to another app: macOS draws its own resting
+            // buttons, and on a light window they come out nearly white. Ours
+            // go on in their place until the app comes back.
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+                browser.tabSwitcher.cancel()
+                measureLights()
+                resting?.isHidden = false
+                // Only the window you were in, or every window's video would come.
+                browser.appLeft()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { note in
+                if let window, (note.object as? NSWindow) === window { Browsers.becameKey(browser) }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { note in
+                if let window, (note.object as? NSWindow) === window { browser.tabSwitcher.cancel() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) { note in
+                if let window, (note.object as? NSWindow) === window { browser.fullScreen = true }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification)) { note in
+                if let window, (note.object as? NSWindow) === window { browser.fullScreen = false }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                resting?.isHidden = true
+                browser.appBack()
+            }
+            .onChange(of: browser.fieldShowing) { _, showing in
+                if showing {
+                    DispatchQueue.main.async { browser.askFocus() }
+                } else {
+                    handBack()
+                }
+            }
+            .onChange(of: browser.activeID) { _, _ in handBack() }
+            .animation(Motion.settle, value: browser.recalling)
+            .animation(Motion.settle, value: browser.hoarding)
+            .animation(Motion.settle, value: browser.tuning)
+            .animation(Motion.settle, value: browser.welcoming)
+            .animation(Motion.settle, value: browser.bookmarking)
+            .animation(Motion.settle, value: browser.managing)
+            .animation(Motion.settle, value: browser.newsShowing)
+            .animation(Motion.settle, value: browser.notesShowing)
+            .animation(Motion.settle, value: browser.bringingIn != nil)
+            .animation(Motion.settle, value: browser.reviewing)
+        .onAppear {
+            watchKeys()
+            browser.askFocus()
+            // Addresses from other apps have somewhere to go from here on.
+            Links.hand(to: browser)
+            BookmarkMenu.shared.start(for: browser)
+            Browsers.watchFrames()
         }
-        .ignoresSafeArea()
     }
 
     /// Give the keyboard back to the page once the field is done with it.
@@ -1161,38 +1142,8 @@ struct ContentView: View {
                 withAnimation(Motion.glide) { browser.makingSpace = false }
                 return true
             }
-            if browser.notesShowing {
-                browser.notesShowing = false
-                return true
-            }
-            if browser.newsShowing {
-                browser.newsShowing = false
-                return true
-            }
-            if browser.tuning {
-                browser.tuning = false
-                return true
-            }
-            if browser.bookmarking {
-                browser.bookmarking = false
-                return true
-            }
-            if browser.managing {
-                browser.managing = false
-                return true
-            }
-            if browser.bringingIn != nil {
-                browser.bringingIn = nil
-                return true
-            }
-            if browser.recalling {
-                browser.recalling = false
-                return true
-            }
-            if browser.hoarding {
-                browser.hoarding = false
-                return true
-            }
+            // The same panels in the same order as ⌘W (Browser.closeFront).
+            if browser.closePanel() { return true }
             if browser.suggesting != nil {
                 browser.dropChoice()
                 return true
@@ -1445,11 +1396,7 @@ struct ContentView: View {
         case "0":
             browser.resetZoom()
         case "w" where !shifted:
-            if browser.peekTab != nil {
-                browser.closePeek()
-            } else if let tab = browser.active {
-                browser.close(tab)
-            }
+            browser.closeFront()
         case "l" where !shifted:
             browser.edit()
         case "r" where !shifted:

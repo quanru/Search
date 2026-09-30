@@ -1152,6 +1152,15 @@ enum ExtensionShims {
           (e) => withLastError(e, callback));
       };
       let checkWorker = () => {};
+      // A page owns its ports; this list must not keep an abandoned one alive.
+      const workerPorts = new Set(), workerDisconnect = new WeakMap();
+      const disconnectWorkerPorts = () => {
+        for (const ref of [...workerPorts]) {
+          const port = ref.deref();
+          if (port) workerDisconnect.get(port)?.();
+          else workerPorts.delete(ref);
+        }
+      };
       // When the worker was last heard from — a reply, a port message.
       let heard = 0;
       if (runtime && typeof runtime.sendMessage === "function") {
@@ -1190,7 +1199,9 @@ enum ExtensionShims {
             if (r === "pong" || heard >= started) heard = Math.max(heard, Date.now());
             else {
               if (__SEARCH_VERBOSE__) native("debug.error", ["worker check: " + String(r) + " from " + location.pathname]).catch(() => {});
-              native("background.revive", []).catch(() => {});
+              native("background.revive", []).then((restarted) => {
+                if (restarted) disconnectWorkerPorts();
+              }).catch(() => {});
             }
           }).finally(() => { asking = false; });
         };
@@ -1242,6 +1253,37 @@ enum ExtensionShims {
           checkWorker();
           const port = connect(...args);
           try { port.onMessage.addListener(() => { heard = Date.now(); }); } catch (e) {}
+          // An external extension isn't served by our worker.
+          if (typeof args[0] === "string" && args[0] !== runtime.id) return port;
+          const ref = new WeakRef(port), disconnected = event();
+          const post = port.postMessage, disconnect = port.disconnect;
+          let closed = false;
+          const finish = () => {
+            if (closed) return;
+            closed = true;
+            workerPorts.delete(ref);
+            try { disconnect.call(port); } catch (e) {}
+            for (const f of [...disconnected.listeners]) {
+              try { f(port); } catch (e) { setTimeout(() => { throw e; }); }
+            }
+          };
+          port.onDisconnect.addListener(finish);
+          // Unlike put(), these properties don't retain every port globally.
+          const set = (key, value) => Object.defineProperty(port, key, { value, configurable: true, writable: true });
+          set("onDisconnect", disconnected);
+          set("postMessage", (message) => {
+            if (closed) throw new Error("Attempting to use a disconnected port object");
+            checkWorker();
+            return post.call(port, message);
+          });
+          set("disconnect", () => {
+            closed = true;
+            workerPorts.delete(ref);
+            disconnect.call(port);
+          });
+          for (const old of workerPorts) { if (!old.deref()) workerPorts.delete(old); }
+          workerPorts.add(ref);
+          workerDisconnect.set(port, finish);
           return port;
         });
       }
@@ -2639,10 +2681,6 @@ enum ExtensionShims {
       // script's port, or an app's, goes as it is.
       if (runtime && typeof runtime.connect === "function" && runtime.onConnect) {
         const own = runtime.getURL("");
-        // Content scripts run at the website's URL. Their ports arrive at
-        // the worker with that website as sender, so the worker leaves them
-        // plain; numbering only one end hides messages from the extension.
-        const ownWorld = background || (typeof location !== "undefined" && String(location.href).startsWith(own));
         const numbered = new WeakSet();
         // Set on the port itself, not with `put`, which holds what it touches
         // for good: a port is the extension's to let go. Its onMessage is held
@@ -2676,60 +2714,12 @@ enum ExtensionShims {
           set(event, "hasListeners", () => listeners.size > 0);
           return port;
         };
-        // WebKit can strand a content script's Port when its MV3 worker is
-        // stopped: postMessage still succeeds, but no message arrives and
-        // onDisconnect never fires. A round trip on that very Port keeps an
-        // active worker alive and lets the extension reconnect if it is gone.
-        const watched = new WeakSet();
-        const watch = (port, reply) => {
-          const event = port && port.onMessage, post = port && port.postMessage;
-          if (!event || typeof event.addListener !== "function" || typeof post !== "function" || watched.has(port)) return port;
-          watched.add(port);
-          const listeners = new Set();
-          const token = Math.random().toString(36).slice(2);
-          let awaiting = 0, missed = 0, tick = null, deadline = null;
-          const stop = () => { clearInterval(tick); clearTimeout(deadline); tick = null; };
-          event.addListener.call(event, (message, ...rest) => {
-            const probe = message && message.__searchPortProbe;
-            if (Array.isArray(probe) && probe.length === 2) {
-              if (reply) { try { post.call(port, { __searchPortProbe: probe }); } catch (e) {} }
-              else if (probe[0] === token && probe[1] === awaiting) {
-                clearTimeout(deadline); deadline = null; awaiting = 0; missed = 0;
-              }
-              return;
-            }
-            for (const f of [...listeners]) { try { f(message, ...rest); } catch (e) { setTimeout(() => { throw e; }); } }
-          });
-          set(port, "onMessage", event);
-          set(event, "addListener", (f) => { listeners.add(f); });
-          set(event, "removeListener", (f) => { listeners.delete(f); });
-          set(event, "hasListener", (f) => listeners.has(f));
-          set(event, "hasListeners", () => listeners.size > 0);
-          if (!reply) {
-            const disconnect = port.disconnect;
-            const probe = () => {
-              if (awaiting) return;
-              awaiting = Date.now();
-              try { post.call(port, { __searchPortProbe: [token, awaiting] }); }
-              catch (e) { stop(); try { disconnect.call(port); } catch (e) {} return; }
-              deadline = setTimeout(() => {
-                deadline = null; awaiting = 0;
-                if (++missed >= 2) { stop(); try { disconnect.call(port); } catch (e) {} }
-              }, 5000);
-            };
-            port.onDisconnect.addListener(stop);
-            tick = setInterval(probe, 10000);
-            probe();
-          }
-          return port;
-        };
         const connect = runtime.connect;
         // Only a port to the extension itself: another extension would hear
         // the numbered wrapper, not the message.
         put(runtime, "connect", (...args) => {
           const port = connect.apply(runtime, args);
-          if (typeof args[0] === "string" && args[0] !== runtime.id) return port;
-          return ownWorld ? number(port) : watch(port, false);
+          return inContent || (typeof args[0] === "string" && args[0] !== runtime.id) ? port : number(port);
         });
         const onConnect = runtime.onConnect;
         const add = onConnect.addListener, remove = onConnect.removeListener, has = onConnect.hasListener;
@@ -2742,7 +2732,7 @@ enum ExtensionShims {
           if (!w) {
             w = (port) => {
               const given = port && port.sender, sender = untabbed(given);
-              port = fromOwn(port) ? number(port) : watch(port, true);
+              port = fromOwn(port) ? number(port) : port;
               // WebKit makes a port's sender afresh at each look, over
               // anything set on the port: the port is seen through a proxy.
               if (sender !== given) {
@@ -3781,8 +3771,7 @@ enum ExtensionShims {
         // A page found the worker gone though WebKit believes it runs (see
         // the shim's ping).
         case "background.revive":
-            owner.revive(id, because: "its worker stopped answering")
-            return nil
+            return owner.revive(id, because: "its worker stopped answering")
 
         // MARK: what went wrong inside
         case "debug.error":

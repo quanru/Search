@@ -356,26 +356,23 @@ struct SideBar: View {
         return (0..<rows).map { $0 < extra ? base + 1 : base }
     }
 
-    /// Where each square goes, in the order of the row. Each row splits the
-    /// column's width between its own squares — the row fills edge to edge,
-    /// not each cell on its own — and every row is as tall as the narrowest
-    /// cell allows, never taller than the classic square: past that a cell
-    /// turns into a wide, short button rather than a bigger icon.
+    /// Where each square goes, in the order of the row. All rows use the same
+    /// cell width, so the last row does not stretch two pins wider than the
+    /// three above them. Up to three pins still reserve three places.
     private func pinCells(_ count: Int) -> [CGRect] {
         let room = prefs.sideWidth - 20
         let gap = SideBar.pinGap
         let fits = Int((room + gap) / (SideBar.square + gap))
         let rows = SideBar.pinRows(count, most: min(4, max(1, fits)))
-        // A row of fewer than three keeps three places.
-        let slots = rows.map { rows.count == 1 ? max($0, min(3, fits)) : $0 }
-        let widths = slots.map { max(20, (room - CGFloat($0 - 1) * gap) / CGFloat($0)) }
-        let height = min(SideBar.square, widths.min() ?? SideBar.square)
+        let slots = max(rows.max() ?? 0, min(3, fits))
+        let width = max(20, (room - CGFloat(max(0, slots - 1)) * gap) / CGFloat(max(1, slots)))
+        let height = min(SideBar.square, width)
         var cells: [CGRect] = []
         for (row, n) in rows.enumerated() {
             for col in 0..<n {
-                cells.append(CGRect(x: CGFloat(col) * (widths[row] + gap),
+                cells.append(CGRect(x: CGFloat(col) * (width + gap),
                                     y: CGFloat(row) * (height + gap),
-                                    width: widths[row], height: height))
+                                    width: width, height: height))
             }
         }
         return cells
@@ -602,7 +599,7 @@ private struct PinSquare: View {
                     .matchedGeometryEffect(id: "live", in: pill)
             } else {
                 RoundedRectangle(cornerRadius: scale * 9 / 34, style: .continuous)
-                    .fill(browser.selectedTabIDs.contains(tab.id) ? Palette.pinLive :
+                    .fill(browser.selectedTabIDs.contains(tab.id) ? Palette.wash :
                           hovering ? Palette.hover : Palette.wash.opacity(0.55))
             }
         }
@@ -615,10 +612,11 @@ private struct PinSquare: View {
         }
         .contentShape(RoundedRectangle(cornerRadius: scale * 9 / 34, style: .continuous))
         .modifier(OneClick(double: live) {
+            guard NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty else { return }
             browser.clearTabSelection()
             if live { browser.goHome(tab) } else { browser.select(tab) }
         })
-        .overlay { ModifiedTabClick { browser.extendTabSelection(to: tab, modifiers: $0) } }
+        .modifier(ModifiedTabClick { browser.extendTabSelection(to: tab, modifiers: $0) })
         // Put down, like ⌘W: close() is what knows a pin isn't removed.
         .overlay { MiddleClick { browser.close(tab) } }
         .onHover { hovering = $0 }
@@ -758,11 +756,11 @@ private struct SideRow: View {
         .modifier(Shake(travel: shake))
         .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .modifier(OneClick(double: false) {
-            guard interactive else { return }
+            guard interactive, NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty else { return }
             browser.clearTabSelection()
             if live { browser.beginTabEdit(tab) } else { browser.select(tab) }
         })
-        .overlay { if interactive && !editing { ModifiedTabClick { browser.extendTabSelection(to: tab, modifiers: $0) } } }
+        .modifier(ModifiedTabClick { if interactive && !editing { browser.extendTabSelection(to: tab, modifiers: $0) } })
         .overlay { if interactive { MiddleClick(act: close) } }
         .onHover { hovering = $0 }
         .contextMenu { if interactive { TabMenu(browser: browser, tab: tab, close: close) } }
@@ -872,7 +870,7 @@ struct KeepLine: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("Close the tabs under the line. Pins and groups stay; ⇧⌘T brings a tab back.")
+                .help("Close the tabs under the line. Pins and groups stay; ⇧⌘T brings them all back.")
                 .transition(.opacity)
             }
         }
