@@ -57,10 +57,11 @@ jobs:
         continue-on-error: true
         working-directory: Tests/Midscene
         env:
-          MIDSCENE_REPORT_URL: ${{ format('{0}/runs/{1}/{2}', vars.MIDSCENE_PAGES_URL, github.run_id, github.run_attempt) }}
+          MIDSCENE_REPORT_URL: ${{ vars.MIDSCENE_PAGES_URL != '' && format('{0}/runs/{1}/{2}', vars.MIDSCENE_PAGES_URL, github.run_id, github.run_attempt) || '' }}
           SOURCE_RUN: ${{ inputs.source_run || vars.MIDSCENE_REPORT_SOURCE_RUN }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
         run: |
-          printf 'Source workflow: [run %s](https://github.com/quanru/Search/actions/runs/%s/attempts/1)\n\n' "$SOURCE_RUN" "$SOURCE_RUN" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Source workflow: [run %s](https://github.com/%s/actions/runs/%s)\n\n' "$SOURCE_RUN" "$SOURCE_REPOSITORY" "$SOURCE_RUN" >> "$GITHUB_STEP_SUMMARY"
           npm run report
       - name: Preserve all available reports
         if: always()
