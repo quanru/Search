@@ -21,3 +21,4 @@ Tests/Midscene/.midscene/
 Tests/Midscene/.env
 Tests/Midscene/summary.md
 Tests/Midscene/midscene-node-spec.*.md
+Tests/Midscene/desktop-health/

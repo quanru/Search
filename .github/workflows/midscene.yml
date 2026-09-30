@@ -37,6 +37,31 @@ jobs:
           persist-credentials: false
       - name: Run every Swift regression with isolated WebKit journeys
         run: python3 Tests/run-ci-tests.py
+  desktop-capability:
+    name: Hosted macOS desktop capability (no model secrets)
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+        working-directory: Tests/Midscene
+      - name: Check native desktop permissions and SDK health
+        run: node --experimental-strip-types scripts/desktop-health.ts
+        working-directory: Tests/Midscene
+      - name: Record capability results
+        if: always()
+        run: cat Tests/Midscene/desktop-health/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hosted-macos-desktop-health
+          path: Tests/Midscene/desktop-health/
+          retention-days: 14
   visual:
     needs: [validation, swift]
     # No PR code ever reaches a desktop runner or billable model credentials.

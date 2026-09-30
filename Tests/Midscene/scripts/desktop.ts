@@ -18,10 +18,14 @@ export async function openCase(id: string, onTeardown: (cleanup: () => Promise<v
   await access(path.join(app, 'Contents/MacOS/Search'));
   const out = path.resolve('midscene_run');
   await mkdir(out, { recursive: true });
-  const world = `midscene-${randomUUID()}`;
+  // Darwin Unix socket paths have a 104-byte limit, including the terminator.
+  const world = `midscene-${randomUUID().replaceAll('-', '').slice(0, 16)}`;
   const bundle = `com.officecommun.search.${world}`;
   const suite = `com.officecommun.search.test.${world}`;
   const support = path.join(homedir(), 'Library/Application Support', `Search (${world})`);
+  if (Buffer.byteLength(path.join(support, 'bench.sock')) >= 104) {
+    throw new Error('Test support path exceeds the macOS Unix socket limit');
+  }
   const work = await mkdtemp(path.join(tmpdir(), 'search-midscene-'));
   const copy = path.join(work, 'Search.app');
   const server = createServer((req, res) => {
