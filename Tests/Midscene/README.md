@@ -23,6 +23,10 @@ the reviewed inventory. `midscene.config.ts` registers `ComputerAgent` through
 visible outcomes are `aiAssert` prompts. No selectors or probe commands perform
 user steps. The existing bench socket is used only as a startup readiness marker.
 
+Every case must include `aiAct` and end with `aiAssert` checking the final visible
+result. Intermediate outcomes should also use `aiAssert`. Model-free collection
+rejects missing assertions and actions left after the last assertion, including on PRs.
+
 | Shard | Cases |
 | --- | --- |
 | import | Bookmarks file import; repeated import without duplicates |
