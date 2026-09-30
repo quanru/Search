@@ -148,9 +148,15 @@ suite remain failures, and a Swift failure does not suppress visual evidence.
 
 A shard timeout or setup failure may yield no report for its unfinished cases;
 the aggregate Summary records those cases as missing rather than passed. Job
-logs retain startup errors. Model execution was exercised locally and in hosted
-CI. Hosted Intel CI verified isolated app startup and native report publication,
-but the selected internal model endpoint timed out from GitHub's network. Local
-AI assertions passed navigation and file import; repeated import reported duplicate
-entries and needs further investigation. Visual journeys are not yet a passing
-release gate.
+logs retain startup errors. The replacement model configuration was verified
+to return AI responses from hosted Intel CI. Earlier runs exposed an isolation
+problem: legacy probe mode hid the test window, allowing local AI steps to target
+an existing Search window. Those local outcomes are invalid. The explicit visible
+E2E mode corrects that startup policy. All three AI journeys passed on hosted
+`macos-15-intel` using the replacement model configuration in
+[run 36677518910](https://github.com/quanru/Search/actions/runs/36677518910)
+on 2026-09-30. Both import cases produced exactly one folder with two bookmarks
+in separate test worlds; the navigation screenshot shows `1 of 3` matches.
+The overall workflow remains red because the separate Swift private-download
+regression timed out waiting for download state. One successful visual run is
+initial integration evidence, rather than proof of long-term model stability.
