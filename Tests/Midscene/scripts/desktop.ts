@@ -86,7 +86,7 @@ export async function openCase(id: string, onTeardown: (cleanup: () => Promise<v
   execFileSync('defaults', ['write', suite, 'bench', '-bool', 'true']);
   const appEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('MIDSCENE_')));
   child = spawn(path.join(copy, 'Contents/MacOS/Search'), ['-AppleLanguages', '(en)', '-AppleLocale', 'en_US'], {
-    env: { ...appEnv, SEARCH_PROBE: world, SEARCH_FEED: `${base}/feed` }, stdio: 'ignore',
+    env: { ...appEnv, SEARCH_PROBE: world, SEARCH_E2E_VISIBLE: '1', SEARCH_FEED: `${base}/feed` }, stdio: 'ignore',
   });
   let launchError: Error | undefined;
   child.on('error', error => { launchError = error; });
@@ -114,6 +114,6 @@ export async function openCase(id: string, onTeardown: (cleanup: () => Promise<v
   }
   if (!focused) throw new Error('Could not bring the owned Search test window to the foreground');
   agent = await agentForComputer({ generateReport: true, reportFileName: id, autoPrintReportMsg: false, replanningCycleLimit: 20,
-    aiContexts: { default: `You are testing Search, a native macOS browser with English menus. Operate only its test window and file chooser. The bookmarks fixture path is ${fixture}. The local Orchard URL is ${base}/orchard. Never navigate to external websites.` } });
+    aiContexts: { default: `You are testing Search, a native macOS browser with English menus. Operate only its test window and file chooser. The bookmarks fixture path is ${fixture}. The local Orchard URL is ${base}/orchard. Never navigate to external websites, quit or relaunch apps, or use Dock or Spotlight. If the test window is unavailable, report failure.` } });
   return agent;
 }

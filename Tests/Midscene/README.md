@@ -35,6 +35,9 @@ Each case generates its own Netscape bookmarks export and loopback HTTP server
 with an ephemeral port. The update feed is also redirected to that server.
 Fixtures have no external resources and a restrictive CSP. The model credentials
 are removed from the launched application's environment.
+`SEARCH_E2E_VISIBLE=1` opts this isolated process out of the bench's normal
+hide-on-activation policy. Legacy probe runs remain hidden by default; without
+this flag their windows cannot be used for screenshot-driven E2E.
 
 This is the native equivalent of Rome's fresh browser context, not a shared
 Playwright session. Only the child process started by the harness is terminated;
