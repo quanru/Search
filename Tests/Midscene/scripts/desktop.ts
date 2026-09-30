@@ -35,8 +35,15 @@ export async function openCase(id: string, onTeardown: (cleanup: () => Promise<v
   onTeardown(async () => {
     try {
       if (agent) {
-        await writeFile(path.join(out, `${id}.png`), Buffer.from((await agent.interface.screenshotBase64()).replace(/^data:image\/\w+;base64,/, ''), 'base64'));
-        await writeFile(path.join(out, `${id}.html`), agent.reportHTMLString({ inlineScreenshots: true }));
+        const publicationErrors: unknown[] = [];
+        try {
+          await writeFile(path.join(out, `${id}.png`), Buffer.from((await agent.interface.screenshotBase64()).replace(/^data:image\/\w+;base64,/, ''), 'base64'));
+        } catch (error) { publicationErrors.push(error); }
+        // Publish native HTML even if the final screenshot capture fails.
+        try {
+          await writeFile(path.join(out, `${id}.html`), agent.reportHTMLString({ inlineScreenshots: true }));
+        } catch (error) { publicationErrors.push(error); }
+        if (publicationErrors.length) throw new AggregateError(publicationErrors, 'Case artifact publication failed');
       }
     } finally {
       await agent?.destroy().catch(() => undefined);
@@ -55,34 +62,34 @@ export async function openCase(id: string, onTeardown: (cleanup: () => Promise<v
       }
     }
   });
-    server.listen(0, '127.0.0.1');
-    await once(server, 'listening');
-    const address = server.address();
-    if (!address || typeof address === 'string') throw new Error('Missing fixture server');
-    const base = `http://127.0.0.1:${address.port}`;
-    const fixture = path.join(work, 'e2e-bookmarks.html');
-    await writeFile(fixture, `<!DOCTYPE NETSCAPE-Bookmark-file-1><TITLE>Bookmarks</TITLE><DL><p><DT><H3>E2E Reading</H3><DL><p><DT><A HREF="${base}/orchard">E2E Orchard</A><DT><A HREF="${base}/harbor">E2E Harbor</A></DL><p></DL><p>`);
-    await cp(app, copy, { recursive: true });
-    execFileSync('/usr/libexec/PlistBuddy', ['-c', `Set :CFBundleIdentifier ${bundle}`, path.join(copy, 'Contents/Info.plist')]);
-    execFileSync('codesign', ['--force', '--deep', '--sign', '-', copy], { stdio: 'pipe' });
-    execFileSync('defaults', ['write', suite, 'welcomed', '-bool', 'true']);
-    execFileSync('defaults', ['write', suite, 'bench', '-bool', 'true']);
-    const appEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('MIDSCENE_')));
-    child = spawn(path.join(copy, 'Contents/MacOS/Search'), ['-AppleLanguages', '(en)', '-AppleLocale', 'en_US'], {
-      env: { ...appEnv, SEARCH_PROBE: world, SEARCH_FEED: `${base}/feed` }, stdio: 'ignore',
-    });
-    let launchError: Error | undefined;
-    child.on('error', error => { launchError = error; });
-    let ready = false;
-    for (let attempt = 0; attempt < 150; attempt++) {
-      if (launchError) throw launchError;
-      if (child.exitCode !== null || signal.aborted) throw new Error('Search exited before readiness');
-      try { await access(path.join(support, 'bench.sock')); ready = true; break; } catch { await delay(100); }
-    }
-    if (!ready) throw new Error('Search did not initialize its isolated probe');
-    // Target the launched PID; never let AppleScript launch an unconfigured app.
-    execFileSync('osascript', ['-e', `tell application "System Events" to set frontmost of first process whose unix id is ${child.pid} to true`]);
-    agent = await agentForComputer({ generateReport: true, reportFileName: id, autoPrintReportMsg: false, replanningCycleLimit: 20,
-      aiContexts: { default: `You are testing Search, a native macOS browser with English menus. Operate only its test window and file chooser. The bookmarks fixture path is ${fixture}. The local Orchard URL is ${base}/orchard. Never navigate to external websites.` } });
-    return agent;
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('Missing fixture server');
+  const base = `http://127.0.0.1:${address.port}`;
+  const fixture = path.join(work, 'e2e-bookmarks.html');
+  await writeFile(fixture, `<!DOCTYPE NETSCAPE-Bookmark-file-1><TITLE>Bookmarks</TITLE><DL><p><DT><H3>E2E Reading</H3><DL><p><DT><A HREF="${base}/orchard">E2E Orchard</A><DT><A HREF="${base}/harbor">E2E Harbor</A></DL><p></DL><p>`);
+  await cp(app, copy, { recursive: true });
+  execFileSync('/usr/libexec/PlistBuddy', ['-c', `Set :CFBundleIdentifier ${bundle}`, path.join(copy, 'Contents/Info.plist')]);
+  execFileSync('codesign', ['--force', '--deep', '--sign', '-', copy], { stdio: 'pipe' });
+  execFileSync('defaults', ['write', suite, 'welcomed', '-bool', 'true']);
+  execFileSync('defaults', ['write', suite, 'bench', '-bool', 'true']);
+  const appEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('MIDSCENE_')));
+  child = spawn(path.join(copy, 'Contents/MacOS/Search'), ['-AppleLanguages', '(en)', '-AppleLocale', 'en_US'], {
+    env: { ...appEnv, SEARCH_PROBE: world, SEARCH_FEED: `${base}/feed` }, stdio: 'ignore',
+  });
+  let launchError: Error | undefined;
+  child.on('error', error => { launchError = error; });
+  let ready = false;
+  for (let attempt = 0; attempt < 150; attempt++) {
+    if (launchError) throw launchError;
+    if (child.exitCode !== null || signal.aborted) throw new Error('Search exited before readiness');
+    try { await access(path.join(support, 'bench.sock')); ready = true; break; } catch { await delay(100); }
+  }
+  if (!ready) throw new Error('Search did not initialize its isolated probe');
+  // Target the launched PID; never let AppleScript launch an unconfigured app.
+  execFileSync('osascript', ['-e', `tell application "System Events" to set frontmost of first process whose unix id is ${child.pid} to true`]);
+  agent = await agentForComputer({ generateReport: true, reportFileName: id, autoPrintReportMsg: false, replanningCycleLimit: 20,
+    aiContexts: { default: `You are testing Search, a native macOS browser with English menus. Operate only its test window and file chooser. The bookmarks fixture path is ${fixture}. The local Orchard URL is ${base}/orchard. Never navigate to external websites.` } });
+  return agent;
 }
