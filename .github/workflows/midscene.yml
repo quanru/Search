@@ -1,0 +1,153 @@
+name: Midscene desktop E2E
+on:
+  pull_request:
+    paths: ['Sources/**', 'Tests/**', 'Package.swift', 'build.sh', '.github/workflows/midscene.yml']
+  push:
+    branches: ["**"]
+    paths: ['Sources/**', 'Tests/**', 'Package.swift', 'build.sh', '.github/workflows/midscene.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: midscene-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  validation:
+    name: Harness validation (no model secrets)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: Tests/Midscene/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: Tests/Midscene
+      - run: npm run check
+        working-directory: Tests/Midscene
+  swift:
+    name: Swift regression (no model secrets)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: swift test
+  visual:
+    needs: [validation, swift]
+    # No PR code ever reaches a desktop runner or billable model credentials.
+    # Manual dispatch is restricted to the repository's default branch too.
+    if: >-
+      vars.MIDSCENE_DESKTOP_ENABLED == 'true' &&
+      github.event_name != 'pull_request' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: [self-hosted, macOS, midscene-desktop]
+    timeout-minutes: 35
+    concurrency:
+      group: midscene-dedicated-desktop
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        shard: [import, navigation]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: Tests/Midscene/package-lock.json
+      - run: npm ci
+        working-directory: Tests/Midscene
+      - name: Clear previous reports
+        working-directory: Tests/Midscene
+        run: node -e "require('fs').rmSync('midscene_run', {recursive:true, force:true})"
+      - name: Build Search test app
+        run: ./build.sh debug
+      - name: Run visual shard
+        working-directory: Tests/Midscene
+        env:
+          MIDSCENE_DESKTOP_ENABLED: '1'
+          MIDSCENE_SHARD: ${{ matrix.shard }}
+          MIDSCENE_MODEL_API_KEY: ${{ secrets.MIDSCENE_MODEL_API_KEY }}
+          MIDSCENE_MODEL_NAME: ${{ secrets.MIDSCENE_MODEL_NAME }}
+          MIDSCENE_MODEL_BASE_URL: ${{ secrets.MIDSCENE_MODEL_BASE_URL }}
+          MIDSCENE_MODEL_FAMILY: ${{ secrets.MIDSCENE_MODEL_FAMILY }}
+        run: npm test
+      - name: Preserve shard reports even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: midscene-${{ matrix.shard }}
+          path: Tests/Midscene/midscene_run/
+          if-no-files-found: warn
+          retention-days: 14
+  reports:
+    needs: visual
+    if: always() && needs.visual.result != 'skipped'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
+        working-directory: Tests/Midscene
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: midscene-*
+          path: Tests/Midscene/midscene_run
+          merge-multiple: false
+      - name: Merge native reports and render case table
+        id: merge
+        continue-on-error: true
+        working-directory: Tests/Midscene
+        env:
+          MIDSCENE_REPORT_URL: ${{ vars.MIDSCENE_PAGES_URL != '' && format('{0}/runs/{1}/{2}', vars.MIDSCENE_PAGES_URL, github.run_id, github.run_attempt) || '' }}
+        run: npm run report
+      - name: Preserve all available reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: midscene-combined
+          path: Tests/Midscene/midscene_run/
+          retention-days: 14
+      - name: Prepare optional Pages site
+        if: always() && vars.MIDSCENE_PAGES_URL != ''
+        env:
+          REPORT_PATH: runs/${{ github.run_id }}/${{ github.run_attempt }}
+        run: |
+          mkdir -p "_site/$REPORT_PATH"
+          cp -R Tests/Midscene/midscene_run/. "_site/$REPORT_PATH/"
+      - uses: actions/upload-pages-artifact@v3
+        if: always() && vars.MIDSCENE_PAGES_URL != ''
+        with:
+          path: _site
+      - name: Require complete reports
+        if: steps.merge.outcome != 'success'
+        run: exit 1
+  publish:
+    needs: reports
+    if: always() && needs.reports.result != 'skipped' && vars.MIDSCENE_PAGES_URL != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    concurrency:
+      group: midscene-pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deploy
