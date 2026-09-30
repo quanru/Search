@@ -35,7 +35,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - run: swift test
+      - name: Run every Swift regression with isolated WebKit journeys
+        run: python3 Tests/run-ci-tests.py
   visual:
     needs: [validation, swift]
     # No PR code ever reaches a desktop runner or billable model credentials.

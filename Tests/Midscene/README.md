@@ -72,7 +72,9 @@ native HTML before rerunning a failed journey.
 ## CI configuration
 
 Every PR and pushed branch runs type checking, native framework YAML collection, report regression tests and Swift
-regressions with no model secrets. It never uses a self-hosted runner. Visual
+regressions with no model secrets. The seven WebKit download tests run in
+separate XCTest processes via `Tests/run-ci-tests.py`; all 51 Swift cases remain
+required. It never uses a self-hosted runner. Visual
 tests run only for the default branch on push or manual dispatch, and only when
 the repository variable `MIDSCENE_DESKTOP_ENABLED=true` is set. All pushed branches can run the secret-free checks; model execution still requires
 the repository default branch.
