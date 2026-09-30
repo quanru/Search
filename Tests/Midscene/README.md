@@ -74,18 +74,21 @@ native HTML before rerunning a failed journey.
 Every PR and pushed branch runs type checking, native framework YAML collection, report regression tests and Swift
 regressions with no model secrets. The seven WebKit download tests run in
 separate XCTest processes via `Tests/run-ci-tests.py`; all 51 Swift cases remain
-required. It never uses a self-hosted runner. Visual
-tests run only for the default branch on push or manual dispatch, and only when
-the repository variable `MIDSCENE_DESKTOP_ENABLED=true` is set. All pushed branches can run the secret-free checks; model execution still requires
-the repository default branch.
+required. They use GitHub-hosted `macos-15-intel`. Visual
+tests run only for the default branch or the owner-configured trusted ref on push or manual dispatch, and only when
+the repository variable `MIDSCENE_DESKTOP_ENABLED=true` is set. All pushed branches can run the secret-free checks. To validate an implementation branch before merging,
+set `MIDSCENE_TRUSTED_REF` to its full ref, such as `refs/heads/test/midscene-e2e`;
+clear that variable after validation. PR events never run model tests.
 
-Prepare a dedicated self-hosted macOS runner labelled `midscene-desktop`, running
-in a logged-in GUI account with the permissions above. Do not use a service
-session without a display. Set repository secrets `MIDSCENE_MODEL_API_KEY`,
+The Intel hosted runner passed the SDK screenshot, mouse movement and permissions
+checks on 2026-09-30, exposing a 1920×1080 display. In the same check, ARM
+`macos-15` exposed zero displays and failed screenshot capture. The optional
+`desktop-capability` job records current runner evidence without model credentials.
+No self-hosted runner is required. Set repository secrets `MIDSCENE_MODEL_API_KEY`,
 `MIDSCENE_MODEL_NAME`, `MIDSCENE_MODEL_BASE_URL`, `MIDSCENE_MODEL_FAMILY` for a
 supported vision model. Install/build steps do not receive those secrets.
-Both matrix shards run serially with `fail-fast: false`; a desktop concurrency
-group also serializes separate workflow runs.
+Both matrix shards run serially with `fail-fast: false`; a concurrency group
+also serializes separate workflow runs. Each hosted job gets a fresh VM.
 
 Optionally enable GitHub Pages with Actions as its source and set repository
 variable `MIDSCENE_PAGES_URL` to the complete base URL, for example

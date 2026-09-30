@@ -14,7 +14,7 @@ export async function openCase(id: string, onTeardown: (cleanup: () => Promise<v
   for (const key of ['MIDSCENE_MODEL_API_KEY', 'MIDSCENE_MODEL_NAME', 'MIDSCENE_MODEL_BASE_URL', 'MIDSCENE_MODEL_FAMILY']) {
     if (!process.env[key]) throw new Error(`Missing ${key}`);
   }
-  const app = path.resolve(process.env.SEARCH_E2E_APP ?? '../../build/Search.app');
+  const app = path.resolve(process.env.SEARCH_E2E_APP ?? (process.arch === 'x64' ? '../../build/intel/Search.app' : '../../build/Search.app'));
   await access(path.join(app, 'Contents/MacOS/Search'));
   const out = path.resolve('midscene_run');
   await mkdir(out, { recursive: true });

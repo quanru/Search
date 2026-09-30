@@ -30,7 +30,7 @@ jobs:
         working-directory: Tests/Midscene
   swift:
     name: Swift regression (no model secrets)
-    runs-on: macos-15
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
         with:
@@ -66,13 +66,14 @@ jobs:
           retention-days: 14
   visual:
     needs: [validation, swift]
-    # No PR code ever reaches a desktop runner or billable model credentials.
-    # Manual dispatch is restricted to the repository's default branch too.
+    # An owner-configured trusted ref permits staging CI without merging first.
+    # Pull requests never receive model credentials, including same-repo PRs.
     if: >-
       vars.MIDSCENE_DESKTOP_ENABLED == 'true' &&
       github.event_name != 'pull_request' &&
-      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-    runs-on: [self-hosted, macOS, midscene-desktop]
+      (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) ||
+       github.ref == vars.MIDSCENE_TRUSTED_REF)
+    runs-on: macos-15-intel
     timeout-minutes: 35
     concurrency:
       group: midscene-dedicated-desktop
