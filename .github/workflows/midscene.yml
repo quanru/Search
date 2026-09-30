@@ -65,7 +65,7 @@ jobs:
           path: Tests/Midscene/desktop-health/
           retention-days: 14
   visual:
-    needs: [validation, swift]
+    needs: [validation, desktop-capability]
     # An owner-configured trusted ref permits staging CI without merging first.
     # Pull requests never receive model credentials, including same-repo PRs.
     if: >-

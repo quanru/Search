@@ -1,5 +1,5 @@
 import { spawn, execFileSync } from 'node:child_process';
-import { cp, mkdir, mkdtemp, rm, writeFile, access } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, rm, writeFile, readFile, access } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
@@ -40,6 +40,12 @@ export async function openCase(id: string, onTeardown: (cleanup: () => Promise<v
     try {
       if (agent) {
         const publicationErrors: unknown[] = [];
+        // Only the owned test world's data; retain evidence of case isolation.
+        let bookmarks: unknown;
+        try { bookmarks = JSON.parse(await readFile(path.join(support, 'bookmarks.json'), 'utf8')); } catch {}
+        try {
+          await writeFile(path.join(out, `${id}-runtime.json`), JSON.stringify({ pid: child?.pid, world, bookmarks }, null, 2));
+        } catch (error) { publicationErrors.push(error); }
         try {
           await writeFile(path.join(out, `${id}.png`), Buffer.from((await agent.interface.screenshotBase64()).replace(/^data:image\/\w+;base64,/, ''), 'base64'));
         } catch (error) { publicationErrors.push(error); }
@@ -92,7 +98,21 @@ export async function openCase(id: string, onTeardown: (cleanup: () => Promise<v
   }
   if (!ready) throw new Error('Search did not initialize its isolated probe');
   // Target the launched PID; never let AppleScript launch an unconfigured app.
-  execFileSync('osascript', ['-e', `tell application "System Events" to set frontmost of first process whose unix id is ${child.pid} to true`]);
+  let focused = false;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    try {
+      const pid = execFileSync('osascript', ['-e', `tell application "System Events"
+        tell (first process whose unix id is ${child.pid})
+          set frontmost to true
+          perform action "AXRaise" of window 1
+        end tell
+        return unix id of first process whose frontmost is true
+      end tell`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      if (pid === String(child.pid)) { focused = true; break; }
+    } catch {}
+    await delay(100);
+  }
+  if (!focused) throw new Error('Could not bring the owned Search test window to the foreground');
   agent = await agentForComputer({ generateReport: true, reportFileName: id, autoPrintReportMsg: false, replanningCycleLimit: 20,
     aiContexts: { default: `You are testing Search, a native macOS browser with English menus. Operate only its test window and file chooser. The bookmarks fixture path is ${fixture}. The local Orchard URL is ${base}/orchard. Never navigate to external websites.` } });
   return agent;
