@@ -107,6 +107,13 @@ to its exact native HTML. Without it, Summary provides artifact-relative paths;
 GitHub artifacts cannot serve inline images or HTML. Check the publish job if
 hosted links do not resolve.
 
+`Recover Midscene reports` can replay existing shard artifacts through native
+merging and Pages publication without invoking a model. Manually dispatch it
+with `source_run`, or set `MIDSCENE_REPORT_SOURCE_RUN` for a trusted push changing
+that workflow. Clear the temporary variable after recovery. Both report workflows
+download only the named import and navigation shards, so an older combined
+artifact is never mistaken for new shard input.
+
 ## Native reports and failure handling
 
 `npm test` calls the official `runTestProject` API; Midscene Test owns execution,
