@@ -1031,6 +1031,117 @@ enum ExtensionShims {
           if (typeof f === "function") put(runtime, name, f.bind(runtime));
         }
       }
+      // A worker can answer new connections while an older port silently
+      // loses its route. Check that port before posting after an idle spell.
+      // Queue only unsent messages; never replay one handed to WebKit.
+      const portCheck = (message) => message && typeof message === "object"
+        && Object.keys(message).length === 1 && typeof message.__searchPortCheck?.token === "string"
+        && typeof message.__searchPortCheck.reply === "boolean" ? message.__searchPortCheck : null;
+      if (runtime?.onConnect) {
+        const incoming = new WeakSet(), wrapped = new WeakMap();
+        const onConnect = runtime.onConnect;
+        const add = onConnect.addListener.bind(onConnect), remove = onConnect.removeListener.bind(onConnect);
+        const has = onConnect.hasListener.bind(onConnect);
+        const prepare = (port) => {
+          if (incoming.has(port)) return port;
+          incoming.add(port);
+          const messages = port.onMessage, post = port.postMessage.bind(port), listeners = event();
+          messages.addListener((message, ...rest) => {
+            const check = portCheck(message);
+            if (check) {
+              if (!check.reply) { try { post({ __searchPortCheck: { token: check.token, reply: true } }); } catch (e) {} }
+              return;
+            }
+            for (const f of [...listeners.listeners]) {
+              try { f(message, ...rest); } catch (e) { setTimeout(() => { throw e; }); }
+            }
+          });
+          // Ports must not enter put()'s globally retained property list.
+          Object.defineProperty(port, "onMessage", { value: listeners, configurable: true, writable: true });
+          return port;
+        };
+        put(onConnect, "addListener", (listener, ...rest) => {
+          if (typeof listener !== "function") return add(listener, ...rest);
+          let f = wrapped.get(listener);
+          if (!f) { f = (port) => listener(prepare(port)); wrapped.set(listener, f); }
+          return add(f, ...rest);
+        });
+        put(onConnect, "removeListener", (listener) => remove(wrapped.get(listener) || listener));
+        put(onConnect, "hasListener", (listener) => has(wrapped.get(listener) || listener));
+      }
+      // Before the content-script return: an inline chat reaches its worker
+      // through precisely these ports, too.
+      if (typeof document !== "undefined" && runtime && typeof runtime.connect === "function") {
+        const connect = runtime.connect.bind(runtime);
+        put(runtime, "connect", (...args) => {
+          if (typeof args[0] === "string" && args[0] !== runtime.id) return connect(...args);
+          let current = connect(...args), closed = false, heard = 0, timer = null, token = null, retried = false;
+          const messages = event(), disconnected = event(), pending = [];
+          const view = { name: current.name, sender: current.sender, onMessage: messages, onDisconnect: disconnected };
+          const clear = () => { clearTimeout(timer); timer = null; token = null; };
+          const finish = () => {
+            if (closed) return;
+            closed = true; clear(); pending.length = 0;
+            try { current.disconnect(); } catch (e) {}
+            for (const f of [...disconnected.listeners]) {
+              try { f(view); } catch (e) { setTimeout(() => { throw e; }); }
+            }
+          };
+          const flush = () => {
+            clear(); heard = Date.now(); retried = false;
+            while (!closed && pending.length) {
+              const message = pending.shift();
+              try { current.postMessage(message); } catch (e) { finish(); }
+            }
+          };
+          const attach = (port) => {
+            port.onMessage.addListener((message) => {
+              if (closed || current !== port) return;
+              const check = portCheck(message);
+              if (check) {
+                if (check.reply && check.token === token) flush();
+                return;
+              }
+              heard = Date.now();
+              for (const f of [...messages.listeners]) {
+                try { f(message, view); } catch (e) { setTimeout(() => { throw e; }); }
+              }
+            });
+            port.onDisconnect.addListener(() => { if (current === port) finish(); });
+          };
+          const probe = () => {
+            token = Math.random().toString(36).slice(2);
+            timer = setTimeout(() => {
+              clear();
+              if (closed) return;
+              if (retried) { finish(); return; }
+              retried = true;
+              const old = current;
+              try { current = connect(...args); attach(current); }
+              catch (e) { finish(); return; }
+              try { old.disconnect(); } catch (e) {}
+              probe();
+            }, 10000);
+            try { current.postMessage({ __searchPortCheck: { token, reply: false } }); }
+            catch (e) { finish(); }
+          };
+          attach(current);
+          view.postMessage = (message) => {
+            if (closed) throw new Error("Attempting to use a disconnected port object");
+            if (token === null && heard && Date.now() - heard < 5000) return current.postMessage(message);
+            // postMessage snapshots its argument at the call, even when the
+            // receiver isn't ready yet. Do not queue a caller's mutable object.
+            pending.push(typeof structuredClone === "function" ? structuredClone(message) : JSON.parse(JSON.stringify(message)));
+            if (token === null) probe();
+          };
+          view.disconnect = () => {
+            if (closed) return;
+            closed = true; clear(); pending.length = 0; current.disconnect();
+          };
+          return view;
+        });
+      }
+
       if (inContent) {
         // A frame inside this extension's own page — its offscreen
         // document reading a site, say — is part of that page's tab, and
@@ -1152,6 +1263,15 @@ enum ExtensionShims {
           (e) => withLastError(e, callback));
       };
       let checkWorker = () => {};
+      // A page owns its ports; this list must not keep an abandoned one alive.
+      const workerPorts = new Set(), workerDisconnect = new WeakMap();
+      const disconnectWorkerPorts = () => {
+        for (const ref of [...workerPorts]) {
+          const port = ref.deref();
+          if (port) workerDisconnect.get(port)?.();
+          else workerPorts.delete(ref);
+        }
+      };
       // When the worker was last heard from — a reply, a port message.
       let heard = 0;
       if (runtime && typeof runtime.sendMessage === "function") {
@@ -1190,7 +1310,9 @@ enum ExtensionShims {
             if (r === "pong" || heard >= started) heard = Math.max(heard, Date.now());
             else {
               if (__SEARCH_VERBOSE__) native("debug.error", ["worker check: " + String(r) + " from " + location.pathname]).catch(() => {});
-              native("background.revive", []).catch(() => {});
+              native("background.revive", []).then((restarted) => {
+                if (restarted) disconnectWorkerPorts();
+              }).catch(() => {});
             }
           }).finally(() => { asking = false; });
         };
@@ -1242,6 +1364,37 @@ enum ExtensionShims {
           checkWorker();
           const port = connect(...args);
           try { port.onMessage.addListener(() => { heard = Date.now(); }); } catch (e) {}
+          // An external extension isn't served by our worker.
+          if (typeof args[0] === "string" && args[0] !== runtime.id) return port;
+          const ref = new WeakRef(port), disconnected = event();
+          const post = port.postMessage, disconnect = port.disconnect;
+          let closed = false;
+          const finish = () => {
+            if (closed) return;
+            closed = true;
+            workerPorts.delete(ref);
+            try { disconnect.call(port); } catch (e) {}
+            for (const f of [...disconnected.listeners]) {
+              try { f(port); } catch (e) { setTimeout(() => { throw e; }); }
+            }
+          };
+          port.onDisconnect.addListener(finish);
+          // Unlike put(), these properties don't retain every port globally.
+          const set = (key, value) => Object.defineProperty(port, key, { value, configurable: true, writable: true });
+          set("onDisconnect", disconnected);
+          set("postMessage", (message) => {
+            if (closed) throw new Error("Attempting to use a disconnected port object");
+            checkWorker();
+            return post.call(port, message);
+          });
+          set("disconnect", () => {
+            closed = true;
+            workerPorts.delete(ref);
+            disconnect.call(port);
+          });
+          for (const old of workerPorts) { if (!old.deref()) workerPorts.delete(old); }
+          workerPorts.add(ref);
+          workerDisconnect.set(port, finish);
           return port;
         });
       }
@@ -2639,6 +2792,9 @@ enum ExtensionShims {
       // script's port, or an app's, goes as it is.
       if (runtime && typeof runtime.connect === "function" && runtime.onConnect) {
         const own = runtime.getURL("");
+        // Content scripts run at the website's URL. Their ports arrive at
+        // the worker with that website as sender, so the worker leaves them
+        // plain; numbering only one end hides messages from the extension.
         const numbered = new WeakSet();
         // Set on the port itself, not with `put`, which holds what it touches
         // for good: a port is the extension's to let go. Its onMessage is held
@@ -2677,7 +2833,7 @@ enum ExtensionShims {
         // the numbered wrapper, not the message.
         put(runtime, "connect", (...args) => {
           const port = connect.apply(runtime, args);
-          return typeof args[0] === "string" && args[0] !== runtime.id ? port : number(port);
+          return inContent || (typeof args[0] === "string" && args[0] !== runtime.id) ? port : number(port);
         });
         const onConnect = runtime.onConnect;
         const add = onConnect.addListener, remove = onConnect.removeListener, has = onConnect.hasListener;
@@ -3729,8 +3885,7 @@ enum ExtensionShims {
         // A page found the worker gone though WebKit believes it runs (see
         // the shim's ping).
         case "background.revive":
-            owner.revive(id, because: "its worker stopped answering")
-            return nil
+            return owner.revive(id, because: "its worker stopped answering")
 
         // MARK: what went wrong inside
         case "debug.error":
