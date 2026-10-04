@@ -12,9 +12,9 @@ jobs:
     timeout-minutes: 25
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 5
       matrix:
-        include: [{"pr": 514, "sha": "2fa2b72da76e20f37ff6f999407c782b833db0cc"}, {"pr": 509, "sha": "47e5b73780fd4ebe9eec0ff6633893dd6d876298"}, {"pr": 507, "sha": "1cf526cd598d84f004e1a4d2fafabc73a233b538"}, {"pr": 506, "sha": "7b533fd3facc7659ed35004cd29a9bae9c12d048"}, {"pr": 470, "sha": "7cf2c9f3a218b8bc9a8bc8dbceb6f6e348198c44"}, {"pr": 468, "sha": "c34593f81694d0ea40f688df40f5314661ff5ee3"}, {"pr": 454, "sha": "f5a69ad574b93a0af29baa22fca6fd8906a2544b"}, {"pr": 453, "sha": "2e12b4e46fe4ebc92f9d5bf7f584f6b69f1006f0"}, {"pr": 415, "sha": "64cdf2ba5dafa752466bf3a3d110c4ba6d87da5b"}]
+        include: [{"pr": 514, "sha": "2fa2b72da76e20f37ff6f999407c782b833db0cc"}, {"pr": 509, "sha": "47e5b73780fd4ebe9eec0ff6633893dd6d876298"}, {"pr": 507, "sha": "1cf526cd598d84f004e1a4d2fafabc73a233b538"}, {"pr": 506, "sha": "7b533fd3facc7659ed35004cd29a9bae9c12d048"}, {"pr": 470, "sha": "7cf2c9f3a218b8bc9a8bc8dbceb6f6e348198c44"}, {"pr": 468, "sha": "c34593f81694d0ea40f688df40f5314661ff5ee3"}, {"pr": 454, "sha": "f5a69ad574b93a0af29baa22fca6fd8906a2544b"}, {"pr": 453, "sha": "2e12b4e46fe4ebc92f9d5bf7f584f6b69f1006f0"}, {"pr": 415, "sha": "0a70d7a0d9f89c8e6c66402c6ccdfe1b67486dd8"}]
     env:
       SEARCH_PROBE: pr-${{ matrix.pr }}-${{ github.run_id }}
     steps:
@@ -35,16 +35,20 @@ jobs:
           # The existing WebKit download journeys require the separate
           # download-fixture repair; these PRs do not alter downloads.
           swift test --skip DownloadLifecycleTests 2>&1 | tee "$RUNNER_TEMP/pr-validation/swift.log"
-      - name: Split View regression
-        if: always()
-        run: |
-          set -o pipefail
-          python3 Tests/split_view.py 2>&1 | tee "$RUNNER_TEMP/pr-validation/split-view.log"
       - name: Release build
         if: always()
         run: |
           set -o pipefail
           ./build.sh release 2>&1 | tee "$RUNNER_TEMP/pr-validation/release.log"
+          # The existing hidden harness expects the Apple silicon bundle path.
+          if [ -d build/intel/Search.app ]; then
+            ditto build/intel/Search.app build/Search.app
+          fi
+      - name: Split View regression
+        if: always()
+        run: |
+          set -o pipefail
+          python3 Tests/split_view.py 2>&1 | tee "$RUNNER_TEMP/pr-validation/split-view.log"
       - name: Preserve validation evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -63,7 +67,7 @@ jobs:
 
           Revision: \`$REVISION\`
 
-          Validation: Swift unit regression (excluding the existing DownloadLifecycleTests harness), Split View structural regression, and Release app build.
+          Validation: Swift unit regression (excluding the existing DownloadLifecycleTests harness), hidden Split View model regression, and Release app build.
 
           This job does not run visual E2E or verify modified mouse drags or live extension lifecycle recovery. Download harness validation is tracked separately: https://github.com/quanru/Search/actions/runs/36993014218
           EOF
