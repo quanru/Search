@@ -1,0 +1,67 @@
+name: Search review fixes validation
+on:
+  push:
+    branches: [verify/search-review-fixes-20261009]
+    paths: [.github/workflows/review-fixes.yml]
+permissions:
+  contents: read
+jobs:
+  port-recovery:
+    name: PR 453 · exact revision
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    env:
+      SEARCH_PROBE: review-453-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: quanru/Search
+          ref: 5e1b76c5704103cdcc2478e05748487dc5a86700
+          persist-credentials: false
+      - name: Verify exact revision
+        run: test "$(git rev-parse HEAD)" = 5e1b76c5704103cdcc2478e05748487dc5a86700
+      - name: Full shim regression
+        run: node Tests/ExtensionWorkerRecovery/run.js
+      - name: Scoped Swift extension regression
+        run: swift test --filter 'Extension(WorkerPort|Port|WorkerLink|Scripting)Tests'
+      - name: Release app build
+        if: always()
+        run: ./build.sh release
+      - name: State verification scope
+        if: always()
+        run: echo "PR 453 at 5e1b76c5704103cdcc2478e05748487dc5a86700. Full-shim mocks, scoped Swift tests and Release build only. Live WebKit worker recovery is not verified by this job." >> "$GITHUB_STEP_SUMMARY"
+  popup-gestures:
+    name: PR 509 · exact revision
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    env:
+      SEARCH_PROBE: review-509-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: quanru/Search
+          ref: 9a47e72af27ef17cee7c2e4b36aff68872cbdebd
+          persist-credentials: false
+      - name: Verify exact revision
+        run: test "$(git rev-parse HEAD)" = 9a47e72af27ef17cee7c2e4b36aff68872cbdebd
+      - name: Popup listener regression
+        run: node Tests/popup_gesture_script.js
+      - name: Scoped Swift popup regression
+        run: swift test --filter PopupGesture
+      - name: Release app build
+        id: build
+        if: always()
+        run: |
+          ./build.sh release
+          if [ -d build/intel/Search.app ]; then
+            ditto build/intel/Search.app build/Search.app
+          fi
+      - name: Native popup regressions
+        if: always() && steps.build.outcome == 'success'
+        run: python3 Tests/popups.py
+      - name: Native link menu regression
+        if: always() && steps.build.outcome == 'success'
+        run: python3 Tests/link_menu.py
+      - name: State verification scope
+        if: always()
+        run: echo "PR 509 at 9a47e72af27ef17cee7c2e4b36aff68872cbdebd. Scoped Swift, Release build and hidden native popup/link-menu harness; no model calls or user-profile access." >> "$GITHUB_STEP_SUMMARY"
