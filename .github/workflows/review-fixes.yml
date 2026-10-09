@@ -6,43 +6,65 @@ on:
 permissions:
   contents: read
 jobs:
-  popup-order-trace:
-    name: PR 509 · diagnostic event-order overlay
+  extension-admission:
+    name: ${{ matrix.label }} · extension admission and OS evidence
     runs-on: macos-15-intel
-    timeout-minutes: 20
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: PR 453
+            repository: quanru/Search
+            sha: 9df9dba0734c1afddf284e6a3e8a57d286829dd2
+            args: ''
+          - label: Upstream baseline
+            repository: driceroland/Search
+            sha: 35aa0516fc300031733bb843f334b47baff72232
+            args: --admission-only
     defaults:
       run:
         working-directory: source
     env:
-      SEARCH_PROBE: popup-order-trace-${{ github.run_id }}
+      SEARCH_PROBE: admission-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
         with:
+          repository: quanru/Search
+          ref: 9df9dba0734c1afddf284e6a3e8a57d286829dd2
           persist-credentials: false
-          path: diagnostics
-          sparse-checkout: .github/diagnostics
+          path: fixtures
+          sparse-checkout: Tests/ExtensionWorkerRecovery
       - uses: actions/checkout@v4
         with:
-          repository: quanru/Search
-          ref: 14d6949fe3afdb2c9f0fbbaa9f9ae5fabf9f9baa
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.sha }}
           persist-credentials: false
           path: source
-      - name: Verify source before diagnostic overlay
+      - name: Verify source and install only fixture overlay
+        env:
+          EXPECTED_SHA: ${{ matrix.sha }}
         run: |
-          test "$(git rev-parse HEAD)" = 14d6949fe3afdb2c9f0fbbaa9f9ae5fabf9f9baa
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           test -z "$(git status --porcelain)"
-      - name: Apply test-only event-order trace
-        run: |
-          python3 ../diagnostics/.github/diagnostics/popup-menu-trace.py
+          mkdir -p Tests/ExtensionWorkerRecovery
+          cp -R ../fixtures/Tests/ExtensionWorkerRecovery/. Tests/ExtensionWorkerRecovery/
           git diff --stat
-      - name: Build diagnostic derivative
+          git status --short
+      - name: Diagnostic helper self-checks
+        run: python3 Tests/ExtensionWorkerRecovery/live.py --self-test
+      - name: Release app build
         run: |
           ./build.sh release
           if [ -d build/intel/Search.app ]; then
             ditto build/intel/Search.app build/Search.app
           fi
-      - name: Native menu order trace
-        run: python3 Tests/link_menu.py
-      - name: State diagnostic scope
+      - name: Bounded live native fixture with OS diagnostics
+        timeout-minutes: 10
+        run: python3 Tests/ExtensionWorkerRecovery/live.py ${{ matrix.args }}
+      - name: State verification scope
         if: always()
-        run: echo "Diagnostic derivative of PR 509 at 14d6949, with Store.testing event trace only. This is NOT exact-head validation. Popup permissions and hidden-screen isolation are unchanged; no long-menu retry." >> "$GITHUB_STEP_SUMMARY"
+        env:
+          LABEL: ${{ matrix.label }}
+          SOURCE: ${{ matrix.sha }}
+        run: echo "$LABEL at $SOURCE with fixture 9df9dba0734c1afddf284e6a3e8a57d286829dd2. Baseline overlays test files only, never production code; admission-only does not test recovery. OS reports restricted to this launched process. No model, secrets, caches, or artifact upload." >> "$GITHUB_STEP_SUMMARY"
