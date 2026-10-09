@@ -6,28 +6,43 @@ on:
 permissions:
   contents: read
 jobs:
-  popup-upstream-baseline:
-    name: Upstream main · native link menu baseline
+  popup-order-trace:
+    name: PR 509 · diagnostic event-order overlay
     runs-on: macos-15-intel
     timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: source
     env:
-      SEARCH_PROBE: review-popup-baseline-${{ github.run_id }}
+      SEARCH_PROBE: popup-order-trace-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: driceroland/Search
-          ref: 35aa0516fc300031733bb843f334b47baff72232
           persist-credentials: false
-      - name: Verify unmodified upstream revision
-        run: test "$(git rev-parse HEAD)" = 35aa0516fc300031733bb843f334b47baff72232
-      - name: Release app build
+          path: diagnostics
+          sparse-checkout: .github/diagnostics
+      - uses: actions/checkout@v4
+        with:
+          repository: quanru/Search
+          ref: 14d6949fe3afdb2c9f0fbbaa9f9ae5fabf9f9baa
+          persist-credentials: false
+          path: source
+      - name: Verify source before diagnostic overlay
+        run: |
+          test "$(git rev-parse HEAD)" = 14d6949fe3afdb2c9f0fbbaa9f9ae5fabf9f9baa
+          test -z "$(git status --porcelain)"
+      - name: Apply test-only event-order trace
+        run: |
+          python3 ../diagnostics/.github/diagnostics/popup-menu-trace.py
+          git diff --stat
+      - name: Build diagnostic derivative
         run: |
           ./build.sh release
           if [ -d build/intel/Search.app ]; then
             ditto build/intel/Search.app build/Search.app
           fi
-      - name: Existing native link menu baseline
+      - name: Native menu order trace
         run: python3 Tests/link_menu.py
-      - name: State verification scope
+      - name: State diagnostic scope
         if: always()
-        run: echo "Unmodified upstream 35aa0516fc300031733bb843f334b47baff72232, same standard Intel runner and Release build. Existing native link_menu.py only; no long-menu retry and no PR source overlays." >> "$GITHUB_STEP_SUMMARY"
+        run: echo "Diagnostic derivative of PR 509 at 14d6949, with Store.testing event trace only. This is NOT exact-head validation. Popup permissions and hidden-screen isolation are unchanged; no long-menu retry." >> "$GITHUB_STEP_SUMMARY"
