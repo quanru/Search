@@ -16,10 +16,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: quanru/Search
-          ref: c97342b404c83151834dac1932a766936a6c589e
+          ref: 310eb71a0bdfe2e7089c388a5003209528fc24dd
           persist-credentials: false
       - name: Verify exact revision
-        run: test "$(git rev-parse HEAD)" = c97342b404c83151834dac1932a766936a6c589e
+        run: test "$(git rev-parse HEAD)" = 310eb71a0bdfe2e7089c388a5003209528fc24dd
       - name: Full shim regression
         run: node Tests/ExtensionWorkerRecovery/run.js
       - name: Diagnostic helper self-checks
@@ -40,4 +40,4 @@ jobs:
         run: python3 Tests/ExtensionWorkerRecovery/live.py --lldb-launch
       - name: State verification scope
         if: always()
-        run: echo "PR 453 at c97342b404c83151834dac1932a766936a6c589e. Full-shim mocks, scoped Swift tests, Release build, and full LLDB-launched native recovery fixture after repairing the benchmark error formatter and awaiting extension startup. Same signature, entitlements, probe profile and screen guard; no host security settings changed. Only actual fixture assertions establish exercised recovery coverage; NOT COVERED remains unverified. Fixture PASS/FAIL/BLOCKED output is authoritative. PR 509 already verified at a3c4abe and not rerun." >> "$GITHUB_STEP_SUMMARY"
+        run: echo "PR 453 at 310eb71a0bdfe2e7089c388a5003209528fc24dd. Full-shim mocks, scoped Swift tests, Release build, and full LLDB-launched native recovery fixture with a valid description-bearing manifest and startup completion wait. Same signature, entitlements, probe profile and screen guard; no host security settings changed. Only actual fixture assertions establish exercised recovery coverage; NOT COVERED remains unverified. Fixture PASS/FAIL/BLOCKED output is authoritative. PR 509 already verified at a3c4abe and not rerun." >> "$GITHUB_STEP_SUMMARY"
