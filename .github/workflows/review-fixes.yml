@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   port-recovery:
-    name: PR 453 · exact revision
+    name: PR 453 · cleanup and LLDB admission diagnostic
     runs-on: macos-15-intel
     timeout-minutes: 30
     env:
@@ -16,10 +16,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: quanru/Search
-          ref: 28d36f59a166c5e35f6f3086fe56e383113b5637
+          ref: 09bf725ec1c4b53fb9e4ff6febfe147c7553dc97
           persist-credentials: false
       - name: Verify exact revision
-        run: test "$(git rev-parse HEAD)" = 28d36f59a166c5e35f6f3086fe56e383113b5637
+        run: test "$(git rev-parse HEAD)" = 09bf725ec1c4b53fb9e4ff6febfe147c7553dc97
       - name: Full shim regression
         run: node Tests/ExtensionWorkerRecovery/run.js
       - name: Diagnostic helper self-checks
@@ -34,45 +34,10 @@ jobs:
           if [ -d build/intel/Search.app ]; then
             ditto build/intel/Search.app build/Search.app
           fi
-      - name: Direct-launch native WebKit port diagnostic
+      - name: LLDB native extension admission diagnostic
         if: always() && steps.build.outcome == 'success'
         timeout-minutes: 10
-        run: python3 Tests/ExtensionWorkerRecovery/live.py --direct-launch
+        run: python3 Tests/ExtensionWorkerRecovery/live.py --lldb-launch --admission-only
       - name: State verification scope
         if: always()
-        run: echo "PR 453 at 28d36f59a166c5e35f6f3086fe56e383113b5637. Full-shim mocks, scoped Swift tests, Release build, and one direct-launch native WebKit diagnostic with unchanged signature, permissions, and profile isolation. Fixture PASS/FAIL/NOT COVERED output is authoritative; unexercised lifecycle faults are not a pass." >> "$GITHUB_STEP_SUMMARY"
-  popup-gestures:
-    name: PR 509 · exact revision
-    runs-on: macos-15-intel
-    timeout-minutes: 30
-    env:
-      SEARCH_PROBE: review-509-${{ github.run_id }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: quanru/Search
-          ref: a3c4abe63706afe4be1168cf8f4549d4b2eb83dc
-          persist-credentials: false
-      - name: Verify exact revision
-        run: test "$(git rev-parse HEAD)" = a3c4abe63706afe4be1168cf8f4549d4b2eb83dc
-      - name: Popup listener regression
-        run: node Tests/popup_gesture_script.js
-      - name: Scoped Swift popup regression
-        run: swift test --filter PopupGesture
-      - name: Release app build
-        id: build
-        if: always()
-        run: |
-          ./build.sh release
-          if [ -d build/intel/Search.app ]; then
-            ditto build/intel/Search.app build/Search.app
-          fi
-      - name: Native popup regressions
-        if: always() && steps.build.outcome == 'success'
-        run: python3 Tests/popups.py
-      - name: Native link menu regression
-        if: always() && steps.build.outcome == 'success'
-        run: python3 Tests/link_menu.py
-      - name: State verification scope
-        if: always()
-        run: echo "PR 509 at a3c4abe63706afe4be1168cf8f4549d4b2eb83dc. Scoped Swift, Release build, eight supported native popup cases and upstream link-menu harness. The held-menu-over-five-seconds case remains manual/unverified; no model calls or user-profile access." >> "$GITHUB_STEP_SUMMARY"
+        run: echo "PR 453 at 09bf725ec1c4b53fb9e4ff6febfe147c7553dc97. Full-shim mocks, scoped Swift tests, Release build, and one LLDB-launched native extension admission diagnostic. Same signature, entitlements, probe profile and screen guard; no host security settings changed. Admission does not establish port-recovery coverage. Fixture PASS/FAIL/BLOCKED output is authoritative. PR 509 already verified at a3c4abe and not rerun." >> "$GITHUB_STEP_SUMMARY"
