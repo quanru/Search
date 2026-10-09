@@ -16,10 +16,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: quanru/Search
-          ref: 310eb71a0bdfe2e7089c388a5003209528fc24dd
+          ref: b0ee89e82779f4d7dc15c4dc1c4f39a81d12e91a
           persist-credentials: false
       - name: Verify exact revision
-        run: test "$(git rev-parse HEAD)" = 310eb71a0bdfe2e7089c388a5003209528fc24dd
+        run: test "$(git rev-parse HEAD)" = b0ee89e82779f4d7dc15c4dc1c4f39a81d12e91a
       - name: Full shim regression
         run: node Tests/ExtensionWorkerRecovery/run.js
       - name: Diagnostic helper self-checks
@@ -55,14 +55,14 @@ jobs:
                           break
                       time.sleep(0.2)
                   else:
-                      raise RuntimeError('Probe did not own its exact bench socket within additional60s')
+                      raise RuntimeError('Probe did not own its exact bench socket within an additional 60s')
               finally:
                   sv.started.update((sv.running() - before) & sv.holding())
           sv.launch = launch_with_readiness
-          print('VERIFICATION ADAPTATION: original hidden launcher, up to60s additional readiness for this exact probe socket; source unchanged', flush=True)
+          print('VERIFICATION ADAPTATION: original hidden launcher, up to 60s additional readiness for this exact probe socket; source unchanged', flush=True)
           sys.argv = ['Tests/ExtensionWorkerRecovery/live.py']
           runpy.run_path(sys.argv[0], run_name='__main__')
           PYTHON
       - name: State verification scope
         if: always()
-        run: echo "PR 453 at 310eb71a0bdfe2e7089c388a5003209528fc24dd. Exact310eb71 production and native manifest parsing already passed11 scoped Swift tests in run37909447434. This run builds Release and exercises the full native fixture using the existing hidden open launcher, avoiding measured debugger cold-start overhead with a bounded probe-socket readiness wrapper; no source or assertion changes. Same signature, entitlements, probe profile and screen guard; no host security settings changed. Only actual fixture assertions establish exercised recovery coverage; NOT COVERED remains unverified. Fixture PASS/FAIL/BLOCKED output is authoritative. PR 509 already verified at a3c4abe and not rerun." >> "$GITHUB_STEP_SUMMARY"
+        run: echo "PR 453 at b0ee89e82779f4d7dc15c4dc1c4f39a81d12e91a. Production and native manifest parsing are unchanged from 310eb71, which passed 11 scoped Swift tests in run 37909447434. The fixture now awaits a worker registration marker and matches echo boot nonces; readiness alone is not a recovery pass. This run builds Release and exercises the full native fixture using the existing hidden open launcher, avoiding measured debugger cold-start overhead with a bounded probe-socket readiness wrapper. The wrapper only waits for this exact test process to own its probe socket. Same signature, entitlements, probe profile and screen guard; no host security settings changed. Only actual fixture assertions establish exercised recovery coverage; NOT COVERED remains unverified. Fixture PASS/FAIL/BLOCKED output is authoritative. PR 509 already verified at a3c4abe and not rerun." >> "$GITHUB_STEP_SUMMARY"
