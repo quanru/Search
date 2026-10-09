@@ -6,65 +6,73 @@ on:
 permissions:
   contents: read
 jobs:
-  extension-admission:
-    name: ${{ matrix.label }} · extension admission and OS evidence
+  port-recovery:
+    name: PR 453 · exact revision
     runs-on: macos-15-intel
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - label: PR 453
-            repository: quanru/Search
-            sha: 9df9dba0734c1afddf284e6a3e8a57d286829dd2
-            args: ''
-          - label: Upstream baseline
-            repository: driceroland/Search
-            sha: 35aa0516fc300031733bb843f334b47baff72232
-            args: --admission-only
-    defaults:
-      run:
-        working-directory: source
+    timeout-minutes: 30
     env:
-      SEARCH_PROBE: admission-${{ github.run_id }}
+      SEARCH_PROBE: review-453-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
         with:
           repository: quanru/Search
-          ref: 9df9dba0734c1afddf284e6a3e8a57d286829dd2
+          ref: 28d36f59a166c5e35f6f3086fe56e383113b5637
           persist-credentials: false
-          path: fixtures
-          sparse-checkout: Tests/ExtensionWorkerRecovery
-      - uses: actions/checkout@v4
-        with:
-          repository: ${{ matrix.repository }}
-          ref: ${{ matrix.sha }}
-          persist-credentials: false
-          path: source
-      - name: Verify source and install only fixture overlay
-        env:
-          EXPECTED_SHA: ${{ matrix.sha }}
-        run: |
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-          test -z "$(git status --porcelain)"
-          mkdir -p Tests/ExtensionWorkerRecovery
-          cp -R ../fixtures/Tests/ExtensionWorkerRecovery/. Tests/ExtensionWorkerRecovery/
-          git diff --stat
-          git status --short
+      - name: Verify exact revision
+        run: test "$(git rev-parse HEAD)" = 28d36f59a166c5e35f6f3086fe56e383113b5637
+      - name: Full shim regression
+        run: node Tests/ExtensionWorkerRecovery/run.js
       - name: Diagnostic helper self-checks
         run: python3 Tests/ExtensionWorkerRecovery/live.py --self-test
+      - name: Scoped Swift extension regression
+        run: swift test --filter 'Extension(WorkerPort|Port|WorkerLink|Scripting)Tests'
       - name: Release app build
+        id: build
+        if: always()
         run: |
           ./build.sh release
           if [ -d build/intel/Search.app ]; then
             ditto build/intel/Search.app build/Search.app
           fi
-      - name: Bounded live native fixture with OS diagnostics
+      - name: Direct-launch native WebKit port diagnostic
+        if: always() && steps.build.outcome == 'success'
         timeout-minutes: 10
-        run: python3 Tests/ExtensionWorkerRecovery/live.py ${{ matrix.args }}
+        run: python3 Tests/ExtensionWorkerRecovery/live.py --direct-launch
       - name: State verification scope
         if: always()
-        env:
-          LABEL: ${{ matrix.label }}
-          SOURCE: ${{ matrix.sha }}
-        run: echo "$LABEL at $SOURCE with fixture 9df9dba0734c1afddf284e6a3e8a57d286829dd2. Baseline overlays test files only, never production code; admission-only does not test recovery. OS reports restricted to this launched process. No model, secrets, caches, or artifact upload." >> "$GITHUB_STEP_SUMMARY"
+        run: echo "PR 453 at 28d36f59a166c5e35f6f3086fe56e383113b5637. Full-shim mocks, scoped Swift tests, Release build, and one direct-launch native WebKit diagnostic with unchanged signature, permissions, and profile isolation. Fixture PASS/FAIL/NOT COVERED output is authoritative; unexercised lifecycle faults are not a pass." >> "$GITHUB_STEP_SUMMARY"
+  popup-gestures:
+    name: PR 509 · exact revision
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    env:
+      SEARCH_PROBE: review-509-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: quanru/Search
+          ref: a3c4abe63706afe4be1168cf8f4549d4b2eb83dc
+          persist-credentials: false
+      - name: Verify exact revision
+        run: test "$(git rev-parse HEAD)" = a3c4abe63706afe4be1168cf8f4549d4b2eb83dc
+      - name: Popup listener regression
+        run: node Tests/popup_gesture_script.js
+      - name: Scoped Swift popup regression
+        run: swift test --filter PopupGesture
+      - name: Release app build
+        id: build
+        if: always()
+        run: |
+          ./build.sh release
+          if [ -d build/intel/Search.app ]; then
+            ditto build/intel/Search.app build/Search.app
+          fi
+      - name: Native popup regressions
+        if: always() && steps.build.outcome == 'success'
+        run: python3 Tests/popups.py
+      - name: Native link menu regression
+        if: always() && steps.build.outcome == 'success'
+        run: python3 Tests/link_menu.py
+      - name: State verification scope
+        if: always()
+        run: echo "PR 509 at a3c4abe63706afe4be1168cf8f4549d4b2eb83dc. Scoped Swift, Release build, eight supported native popup cases and upstream link-menu harness. The held-menu-over-five-seconds case remains manual/unverified; no model calls or user-profile access." >> "$GITHUB_STEP_SUMMARY"
