@@ -179,6 +179,19 @@ E2E mode corrects that startup policy. All three AI journeys passed on hosted
 [run 36677518910](https://github.com/quanru/Search/actions/runs/36677518910)
 on 2026-09-30. Both import cases produced exactly one folder with two bookmarks
 in separate test worlds; the navigation screenshot shows `1 of 3` matches.
-The overall workflow remains red because the separate Swift private-download
-regression timed out waiting for download state. One successful visual run is
+That earlier overall workflow was red because the separate Swift private-download
+regression timed out waiting for download state. The download fixture was subsequently
+repaired by attaching the WebKit delegate inside the startDownload callback. One successful visual run is
 initial integration evidence, rather than proof of long-term model stability.
+
+## Latest alignment validation (2026-10-09)
+
+[Rome #678 alignment run](https://github.com/quanru/Search/actions/runs/37873391557)
+passed all three AI cases (four aiAssert checks), all 51 Swift tests, 38 report/policy
+regressions and Pages publication. The publication-independent Summary finished
+before deployment began. The native report and exact case HTML/JPEG assets return 200.
+
+[Recovery without Pages](https://github.com/quanru/Search/actions/runs/37875049797)
+passed with model, desktop and Swift jobs skipped.
+[Recovery with Pages/history](https://github.com/quanru/Search/actions/runs/37875250336)
+also passed without model calls; the original and rebuilt native URLs remain available.
