@@ -13,7 +13,7 @@ test('Rome layout places attention first and collapses passes with exact screens
   assert.ok(markdown.indexOf('Failed \\| &lt;case&gt;') < markdown.indexOf('<details>'));
   assert.ok(markdown.indexOf('Missing case') < markdown.indexOf('<details>'));
   assert.ok(markdown.indexOf('Passed case') > markdown.indexOf('<details>'));
-  assert.match(markdown, /Shard \| Case \| Screenshot \| Status \/ reason \| Duration/);
+  assert.match(markdown, /Shard \| Case \| Report \| Screenshot \| Status \/ reason \| Duration/);
   assert.match(markdown, /width="160"/);
   assert.match(markdown, /href="https:\/\/reports.test\/framework\/index.html#runner-step=actual%3Astep"/);
   assert.match(markdown, /1m 1s/);
@@ -71,4 +71,18 @@ test('rebuild Summary links source artifacts and reports aggregation failure sep
   assert.match(markdown, /runs\/10#artifacts/);
   assert.match(markdown, /no new model calls/);
   assert.match(markdown, /Report aggregation: \*\*failure\*\*/);
+});
+test('unpublished results contain counts and artifact links, never empty case tables or screenshot placeholders', () => {
+  const markdown = renderSummary({ runUrl: 'https://github.test/runs/12', cases: [{ title: 'Passed', shard: 'import', status: 'passed' }, { title: 'Missing case', shard: 'navigation', status: 'missing', reason: 'No result recorded' }], publicationResult: 'pending' });
+  assert.match(markdown, /2 total · 1 passed/);
+  assert.match(markdown, /runs\/12#artifacts/);
+  assert.match(markdown, /Missing case: Missing/);
+  assert.doesNotMatch(markdown, /\| Shard|<details>|<img|\[Report\]/);
+});
+test('published case tables have an explicit report link and clickable thumbnail', () => {
+  const markdown = renderSummary({ cases: [{ title: 'Case', shard: 'import', status: 'passed', reportUrl: 'https://reports.test/case.html#runner-step=step', screenshotUrl: 'https://reports.test/step.jpeg' }] });
+  assert.match(markdown, /### Shard results/);
+  assert.match(markdown, /\| Case \| Report \| Screenshot \|/);
+  assert.match(markdown, /\[Report\]\(https:\/\/reports.test\/case.html#runner-step=step\)/);
+  assert.match(markdown, /<img src="https:\/\/reports.test\/step.jpeg"/);
 });

@@ -51,3 +51,7 @@ test('optional publication never changes repository Pages settings', () => {
   assert.match(job('prepare-pages'), /trusted-report-runs.mjs find-previous/);
   assert.match(job('reports'), /trusted-report-runs.mjs validate-source/);
 });
+test('only the final results job renders case tables; visual shards do not duplicate run Summaries', () => {
+  assert.doesNotMatch(job('visual'), /GITHUB_STEP_SUMMARY|summary-only|Add shard results/);
+  assert.match(job('report-results'), /--summary-only/);
+});

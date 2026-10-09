@@ -135,15 +135,6 @@ jobs:
           path: Tests/Midscene/midscene_run/
           if-no-files-found: warn
           retention-days: 14
-      - name: Add shard results to the job Summary
-        if: always()
-        continue-on-error: true
-        working-directory: Tests/Midscene
-        env:
-          MIDSCENE_SHARD: ${{ matrix.shard }}
-          MIDSCENE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          MIDSCENE_PRODUCER_RESULT: ${{ steps.run-shard.outcome == 'success' && steps.upload-shard.outcome == 'success' && 'success' || 'failure' }}
-        run: npm run report -- --summary-only
   reports:
     name: Merge native Midscene reports
     needs: visual

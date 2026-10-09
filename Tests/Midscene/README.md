@@ -118,8 +118,10 @@ dispatch and `MIDSCENE_PUBLISH_REPO` equal to its exact full repository name.
 report site; this workflow is not intended to replace an unrelated Pages website.
 
 Once optional publication completes, the second read-only **Midscene results** job
-records aggregation and publication status. Only successful deployment enables web
-links. The Summary table uses clickable 160-pixel screenshots and exact native
+records aggregation and publication status. Visual shard jobs do not write duplicate
+case Summaries. Before publication, counts and artifact links are shown without empty
+case tables; only successful deployment enables the detailed tables and web links.
+The final case tables have an explicit Report column, clickable 160-pixel screenshots and exact native
 `runner-step` anchors, failed/incomplete cases first and passes in a collapsed
 appendix. Missing Pages, failed or cancelled publication cannot remove the earlier
 Summary or downloadable reports. Published paths are `runs/<run>/<attempt>/`.
