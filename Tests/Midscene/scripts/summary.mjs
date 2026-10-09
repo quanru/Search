@@ -54,7 +54,7 @@ export async function evidenceFor(file, id, passed, directory) {
   }
   return { report: file, stepId: step?.id, screenshot, reason, durationMs: attempt?.durationMs, status: testCase.status };
 }
-export function renderSummary({ product = 'Search', cases, models = [], runUrl = '', nativeReportUrl, issues = [], producerResult = 'success' }) {
+export function renderSummary({ product = 'Search', cases, models = [], runUrl = '', nativeReportUrl, issues = [], producerResult = 'success', nativeReportAvailable = false, reportResult, publicationResult, sourceRunId }) {
   const failures = cases.filter(c => c.status !== 'passed');
   const passed = cases.filter(c => c.status === 'passed');
   const infrastructure = [...issues];
@@ -69,9 +69,16 @@ export function renderSummary({ product = 'Search', cases, models = [], runUrl =
     const status = c.status === 'passed' ? '✅ Passed' : c.status === 'not-run' ? '⏭️ Not run' : c.status === 'missing' ? '⚠️ Missing' : c.status === 'incomplete' ? '⚠️ Incomplete' : '❌ Failed';
     return `| ${cell(c.shard)} | ${name} | ${screenshot} | ${cell(`${status}${c.reason ? `: ${safeReason(c.reason)}` : ''}`)} | ${duration(c.durationMs)} |`;
   };
-  const lines = [`## ${product} × Midscene · ${complete ? 'passed' : 'failure captured'}`, '', `**${complete ? '✅ ' : ''}${attention} need attention · ${passed.length} passed**`, '', `**Models:** ${models.length ? models.map(cell).join(', ') : 'not recorded'}`, ''];
-  const nativeLink = nativeReportUrl ? `**[Open the Midscene Test report](${nativeReportUrl})**` : 'Native Midscene report unavailable; individual case reports remain available.';
+  const lines = [`## ${product} × Midscene · ${complete ? 'passed' : 'failure captured'}`, '', `**${complete ? '✅ ' : ''}${attention} need attention · ${passed.length} passed**`, '', `**Cases:** ${cases.length} total · ${passed.length} passed · ${cases.filter(c => c.status === 'failed').length} failed · ${cases.filter(c => c.status === 'not-run').length} not run · ${cases.filter(c => ['missing', 'incomplete'].includes(c.status)).length} incomplete`, '', `**Models:** ${models.length ? models.map(cell).join(', ') : 'not recorded'}`, ''];
+  const nativeLink = nativeReportUrl ? `**[Open the Midscene Test report](${nativeReportUrl})**` : nativeReportAvailable ? 'Native Midscene Test report included in the artifact.' : 'Native Midscene report unavailable; individual case reports remain available.';
   lines.push(`${nativeLink}${runUrl ? ` · [Download the artifact](${runUrl}#artifacts)` : ''}`, '');
+  if (sourceRunId) {
+    if (!/^\d+$/.test(sourceRunId)) throw new Error('Source run ID must be numeric');
+    const sourceUrl = new URL(sourceRunId, runUrl.replace(/\/$/, '')).href;
+    lines.push(`Report source: [run ${sourceRunId}](${sourceUrl}). This run makes no new model calls. [Source-run artifacts](${sourceUrl}#artifacts).`, '');
+  }
+  if (reportResult && reportResult !== 'success') lines.push(`Report aggregation: **${cell(reportResult)}**. Results use available shard data.`, '');
+  if (publicationResult) lines.push(`Pages publication: **${cell(publicationResult)}**.${nativeReportUrl ? '' : ' Web report links are unavailable; download the artifacts.'}`, '');
   if (!cases.some(c => c.reportUrl)) lines.push('Download the report artifact to inspect native HTML reports and screenshots.', '');
   if (attention) {
     lines.push('### Needs attention', '', '| Shard | Case | Screenshot | Status / reason | Duration |', '|:--|:--|:--|:--|--:|', ...infrastructure.map(issue => `| Workflow | — | — | ❌ ${cell(safeReason(issue))} | — |`), ...failures.sort((a, b) => Number(a.status === 'not-run') - Number(b.status === 'not-run')).map(row), '');

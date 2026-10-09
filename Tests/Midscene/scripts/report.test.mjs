@@ -107,3 +107,10 @@ test('SDK native standalone HTML merges without a model or desktop', () => fixtu
     assert.match(merged, /Synthetic harness entry/);
   } finally { await agent.destroy(); }
 }));
+test('read-only publication Summary preserves the combined native report and uses the deployed URL', () => fixture(async root => {
+  assert.equal(await assemble({ ...opts(root), baseUrl: '', merge }), true);
+  assert.match(await readFile(opts(root).summary, 'utf8'), /Native Midscene Test report included/);
+  assert.equal(await assemble({ ...opts(root), mergeReports: false, publicationResult: 'success', merge: () => { throw new Error('must not merge'); } }), true);
+  assert.match(await readFile(opts(root).summary, 'utf8'), /https:\/\/example.test\/runs\/123\/2\/native.html/);
+  assert.equal(await readFile(path.join(root, 'native.html'), 'utf8'), 'merged');
+}));

@@ -56,3 +56,19 @@ test('empty inventories cannot render an all-passed message', () => {
   assert.match(markdown, /No cases were reported/);
   assert.doesNotMatch(markdown, /All 0 cases passed/);
 });
+test('results remain available without Pages and publication failure does not erase passed cases', () => {
+  for (const publicationResult of ['skipped', 'failure', 'cancelled']) {
+    const markdown = renderSummary({ cases: [{ title: 'Case', shard: 'import', status: 'passed' }], runUrl: 'https://github.test/repo/actions/runs/12', nativeReportAvailable: true, publicationResult });
+    assert.match(markdown, /1 passed/);
+    assert.match(markdown, /Native Midscene Test report included in the artifact/);
+    assert.ok(markdown.includes(`Pages publication: **${publicationResult}**`));
+    assert.match(markdown, /runs\/12#artifacts/);
+    assert.doesNotMatch(markdown, /https:\/\/.*github.io/);
+  }
+});
+test('rebuild Summary links source artifacts and reports aggregation failure separately', () => {
+  const markdown = renderSummary({ cases: [], runUrl: 'https://github.test/repo/actions/runs/12', sourceRunId: '10', reportResult: 'failure', publicationResult: 'skipped' });
+  assert.match(markdown, /runs\/10#artifacts/);
+  assert.match(markdown, /no new model calls/);
+  assert.match(markdown, /Report aggregation: \*\*failure\*\*/);
+});

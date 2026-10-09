@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { collect } from './collect.mjs';
 import { artifactUrl, evidenceFor, renderSummary } from './summary.mjs';
-export async function assemble({ directory, baseUrl = '', summary, merge, shard, runUrl = '', producerResult = 'success', mergeReports = true }) {
+export async function assemble({ directory, baseUrl = '', summary, merge, shard, runUrl = '', producerResult = 'success', mergeReports = true, reportResult, publicationResult, sourceRunId }) {
   await mkdir(directory, { recursive: true });
   const native = path.join(directory, 'native');
   if (mergeReports) {
@@ -82,13 +82,19 @@ export async function assemble({ directory, baseUrl = '', summary, merge, shard,
       await rm(`${native}.html`, { force: true });
     }
   }
-  const nativeReport = merged?.mergedReportPath ?? (!mergeReports && frameworkReports.length === 1 ? frameworkReports[0] : undefined);
-  const markdown = renderSummary({ cases, models: [...models].sort(), runUrl, producerResult, issues, nativeReportUrl: baseUrl && nativeReport ? artifactUrl(baseUrl, directory, nativeReport) : undefined });
+  let retainedNative;
+  if (!mergeReports) {
+    for (const candidate of [path.join(native, 'index.html'), `${native}.html`]) {
+      try { await access(candidate); retainedNative = candidate; break; } catch {}
+    }
+  }
+  const nativeReport = merged?.mergedReportPath ?? retainedNative ?? (!mergeReports && frameworkReports.length === 1 ? frameworkReports[0] : undefined);
+  const markdown = renderSummary({ cases, models: [...models].sort(), runUrl, producerResult, issues, nativeReportAvailable: Boolean(nativeReport), reportResult, publicationResult, sourceRunId, nativeReportUrl: baseUrl && nativeReport ? artifactUrl(baseUrl, directory, nativeReport) : undefined });
   await (summary === process.env.GITHUB_STEP_SUMMARY ? appendFile : writeFile)(summary, markdown);
   return cases.length > 0 && cases.every(c => c.status === 'passed') && !issues.length && producerResult === 'success';
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const { mergeReportFiles } = await import('@midscene/core');
-  const ok = await assemble({ directory: path.resolve(process.argv.slice(2).find(value => !value.startsWith('--')) ?? 'midscene_run'), baseUrl: process.env.MIDSCENE_REPORT_URL ?? '', summary: process.env.GITHUB_STEP_SUMMARY ?? 'summary.md', merge: mergeReportFiles, shard: process.env.MIDSCENE_SHARD, runUrl: process.env.MIDSCENE_RUN_URL, producerResult: process.env.MIDSCENE_PRODUCER_RESULT ?? 'success', mergeReports: !process.argv.includes('--summary-only') });
+  const ok = await assemble({ directory: path.resolve(process.argv.slice(2).find(value => !value.startsWith('--')) ?? 'midscene_run'), baseUrl: process.env.MIDSCENE_REPORT_URL ?? '', summary: process.env.MIDSCENE_SUMMARY_PATH ?? process.env.GITHUB_STEP_SUMMARY ?? 'summary.md', merge: mergeReportFiles, shard: process.env.MIDSCENE_SHARD, runUrl: process.env.MIDSCENE_RUN_URL, producerResult: process.env.MIDSCENE_PRODUCER_RESULT ?? 'success', reportResult: process.env.MIDSCENE_REPORT_RESULT, publicationResult: process.env.MIDSCENE_PUBLICATION_RESULT, sourceRunId: process.env.MIDSCENE_SOURCE_RUN_ID, mergeReports: !process.argv.includes('--summary-only') });
   if (!ok) process.exitCode = 1;
 }

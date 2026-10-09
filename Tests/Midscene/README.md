@@ -10,7 +10,8 @@ through the real application, using `@midscene/computer` rather than a Chromium
 page that would miss Search's native menus, sheets and file chooser.
 
 The design references [Rome #466](https://github.com/rome-os/rome/pull/466) and
-[its follow-up #551](https://github.com/rome-os/rome/pull/551), plus the local
+[its follow-up #551](https://github.com/rome-os/rome/pull/551) and
+[report/publication separation #678](https://github.com/rome-os/rome/pull/678), plus the local
 Rome test harness. It borrows isolation, credential gates, serial shards and
 native report handling. Rome's business cases and web server are not reused.
 The desktop API is described in the [Midscene documentation](https://midscenejs.com/platforms/desktop).
@@ -83,10 +84,11 @@ Every PR and pushed branch runs type checking, native framework YAML collection,
 regressions with no model secrets. The seven WebKit download tests run in
 separate XCTest processes via `Tests/run-ci-tests.py`; all 51 Swift cases remain
 required. They use GitHub-hosted `macos-15-intel`. Visual
-tests run only for the default branch or the owner-configured trusted ref on push or manual dispatch, and only when
-the repository variable `MIDSCENE_DESKTOP_ENABLED=true` is set. All pushed branches can run the secret-free checks. To validate an implementation branch before merging,
-set `MIDSCENE_TRUSTED_REF` to its full ref, such as `refs/heads/test/midscene-e2e`;
-clear that variable after validation. PR events never run model tests.
+tests run only on upstream main or an explicit owner dispatch in a fork, with
+`MIDSCENE_DESKTOP_ENABLED=true`. A fork push runs only the secret-free checks;
+`MIDSCENE_TRUSTED_REF` no longer grants automatic access to model credentials.
+PR events never run model tests. Recovery input `report_source_run_id` skips
+Swift, desktop capability, builds and model calls, while still validating the harness.
 
 The Intel hosted runner passed the SDK screenshot, mouse movement and permissions
 checks on 2026-09-30, exposing a 1920×1080 display. In the same check, ARM
@@ -102,30 +104,37 @@ the necessary network access, rather than by changing assertions or adding retri
 Both matrix shards run serially with `fail-fast: false`; a concurrency group
 also serializes separate workflow runs. Each hosted job gets a fresh VM.
 
-Optionally enable GitHub Pages with Actions as its source and set repository
-variable `MIDSCENE_PAGES_URL` to the complete base URL, for example
-`https://quanru.github.io/Search`. Use a repository where Pages is reserved for
-these reports. Configure the `github-pages` environment to allow the default
-branch. Published paths include both run ID and attempt number. Pages publishes
-the latest workflow's reports; older reports remain downloadable as artifacts
-for 14 days, but their hosted URLs expire when the next site replaces them.
-Each shard and the combined report job render Rome's Summary layout: failed,
-not-run and incomplete cases appear first, and passed cases live in a collapsed
-appendix. Tables show shard, case, a clickable 160-pixel screenshot, status or
-failure reason, and duration. Model name and family are recorded separately from
-credentials. Native report and artifact download links appear above the tables.
-With Pages enabled, case names and screenshots open the recorded framework step
-using the native report's `runner-step` anchor. Available framework step images
-take precedence over teardown screenshots; standalone reports remain the fallback
-without invented step anchors. Without Pages, download the artifact to inspect
-HTML and images. Check the publish job if hosted links do not resolve.
+Reports do not require GitHub Pages. After aggregation the combined native report,
+original shard reports, screenshots and `summary.md` are uploaded for 14 days,
+before checking report completeness. A separate read-only **Midscene results before
+publication** job displays counts and artifact links without waiting for Pages or
+its environment approval. A failed merge retains original reports and keeps CI red.
 
-`Recover Midscene reports` can replay existing shard artifacts through native
-merging and Pages publication without invoking a model. Manually dispatch it
-with `source_run`, or set `MIDSCENE_REPORT_SOURCE_RUN` for a trusted push changing
-that workflow. Clear the temporary variable after recovery. Both report workflows
-download only the named import and navigation shards, so an older combined
-artifact is never mistaken for new shard input.
+Pages is optional: a maintainer can select Settings → Pages → Build and deployment
+→ Source → GitHub Actions. The workflow never enables Pages or changes repository
+settings. Upstream main is eligible in code; a fork additionally requires manual
+dispatch and `MIDSCENE_PUBLISH_REPO` equal to its exact full repository name.
+`publish_pages=false` verifies reports without deployment. Search uses its dedicated
+report site; this workflow is not intended to replace an unrelated Pages website.
+
+Once optional publication completes, the second read-only **Midscene results** job
+records aggregation and publication status. Only successful deployment enables web
+links. The Summary table uses clickable 160-pixel screenshots and exact native
+`runner-step` anchors, failed/incomplete cases first and passes in a collapsed
+appendix. Missing Pages, failed or cancelled publication cannot remove the earlier
+Summary or downloadable reports. Published paths are `runs/<run>/<attempt>/`.
+The site retains up to three recent trusted runs within a 900 MiB limit, replaces
+old content for a rerun, and uses native HTML instead of generating a substitute.
+
+Manually dispatch **Midscene desktop E2E** with `report_source_run_id` to rebuild an
+existing completed run while its shard artifacts remain downloadable, without
+model calls. The old standalone Recover workflow is replaced by this input.
+Source and history must belong to the same repository and Midscene workflow.
+Upstream sources require a trusted event and a commit in main history; fork
+sources require manual dispatch. PRs, fork pushes, other workflows and incomplete
+runs are rejected. Both history-run and artifact lookups paginate. Shard/combined
+artifact names include the attempt, and recovery uses the authenticated source
+attempt so previous rerun output cannot fill missing cases.
 
 ## Native reports and failure handling
 
