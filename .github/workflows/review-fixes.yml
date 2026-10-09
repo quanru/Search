@@ -6,71 +6,29 @@ on:
 permissions:
   contents: read
 jobs:
-  port-recovery:
-    name: PR 453 · exact revision
+  port-recovery-native:
+    name: PR 453 · native admission diagnosis
     runs-on: macos-15-intel
-    timeout-minutes: 30
+    timeout-minutes: 25
     env:
       SEARCH_PROBE: review-453-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
         with:
           repository: quanru/Search
-          ref: 0d6fca47ce94907f0170de97f9805d9ad7d391a3
+          ref: 6065608e7e136dfd9905f4ec8d534fe074963ba6
           persist-credentials: false
       - name: Verify exact revision
-        run: test "$(git rev-parse HEAD)" = 0d6fca47ce94907f0170de97f9805d9ad7d391a3
-      - name: Full shim regression
-        run: node Tests/ExtensionWorkerRecovery/run.js
-      - name: Scoped Swift extension regression
-        run: swift test --filter 'Extension(WorkerPort|Port|WorkerLink|Scripting)Tests'
+        run: test "$(git rev-parse HEAD)" = 6065608e7e136dfd9905f4ec8d534fe074963ba6
       - name: Release app build
-        id: build
-        if: always()
         run: |
           ./build.sh release
           if [ -d build/intel/Search.app ]; then
             ditto build/intel/Search.app build/Search.app
           fi
-      - name: Live native WebKit port recovery
-        if: always() && steps.build.outcome == 'success'
+      - name: Live native WebKit port recovery with crash diagnostics
         timeout-minutes: 10
         run: python3 Tests/ExtensionWorkerRecovery/live.py
       - name: State verification scope
         if: always()
-        run: echo "PR 453 at 0d6fca47ce94907f0170de97f9805d9ad7d391a3. Full-shim mocks, scoped Swift tests, Release build, and bounded live WebKit fixture. Fixture PASS/FAIL/NOT COVERED output is authoritative; unexercised lifecycle faults are not a pass." >> "$GITHUB_STEP_SUMMARY"
-  popup-gestures:
-    name: PR 509 · exact revision
-    runs-on: macos-15-intel
-    timeout-minutes: 30
-    env:
-      SEARCH_PROBE: review-509-${{ github.run_id }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: quanru/Search
-          ref: 14d6949fe3afdb2c9f0fbbaa9f9ae5fabf9f9baa
-          persist-credentials: false
-      - name: Verify exact revision
-        run: test "$(git rev-parse HEAD)" = 14d6949fe3afdb2c9f0fbbaa9f9ae5fabf9f9baa
-      - name: Popup listener regression
-        run: node Tests/popup_gesture_script.js
-      - name: Scoped Swift popup regression
-        run: swift test --filter PopupGesture
-      - name: Release app build
-        id: build
-        if: always()
-        run: |
-          ./build.sh release
-          if [ -d build/intel/Search.app ]; then
-            ditto build/intel/Search.app build/Search.app
-          fi
-      - name: Native popup regressions
-        if: always() && steps.build.outcome == 'success'
-        run: python3 Tests/popups.py
-      - name: Native link menu regression
-        if: always() && steps.build.outcome == 'success'
-        run: python3 Tests/link_menu.py
-      - name: State verification scope
-        if: always()
-        run: echo "PR 509 at 14d6949fe3afdb2c9f0fbbaa9f9ae5fabf9f9baa. Scoped Swift, Release build and hidden native popup/link-menu harness; no model calls or user-profile access." >> "$GITHUB_STEP_SUMMARY"
+        run: echo "PR 453 at 6065608e7e136dfd9905f4ec8d534fe074963ba6. Production tree is unchanged from 0d6fca47; this run preserves native exception diagnostics if live fixture admission fails. Prior Swift and Node passed; live PASS/FAIL/NOT COVERED output is authoritative." >> "$GITHUB_STEP_SUMMARY"
