@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   port-recovery:
-    name: PR 453 · cleanup and LLDB admission diagnostic
+    name: PR 453 · LLDB admission diagnostic
     runs-on: macos-15-intel
     timeout-minutes: 30
     env:
@@ -16,16 +16,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: quanru/Search
-          ref: 09bf725ec1c4b53fb9e4ff6febfe147c7553dc97
+          ref: 06a7970ee5d9212741265b4442bd0e5cbd922cb2
           persist-credentials: false
+          fetch-depth: 2
       - name: Verify exact revision
-        run: test "$(git rev-parse HEAD)" = 09bf725ec1c4b53fb9e4ff6febfe147c7553dc97
+        run: test "$(git rev-parse HEAD)" = 06a7970ee5d9212741265b4442bd0e5cbd922cb2
       - name: Full shim regression
         run: node Tests/ExtensionWorkerRecovery/run.js
       - name: Diagnostic helper self-checks
         run: python3 Tests/ExtensionWorkerRecovery/live.py --self-test
-      - name: Scoped Swift extension regression
-        run: swift test --filter 'Extension(WorkerPort|Port|WorkerLink|Scripting)Tests'
+      - name: Verify fixture-only revision
+        run: test "$(git diff --name-only 09bf725ec1c4b53fb9e4ff6febfe147c7553dc97 HEAD)" = Tests/ExtensionWorkerRecovery/live.py
       - name: Release app build
         id: build
         if: always()
@@ -40,4 +41,4 @@ jobs:
         run: python3 Tests/ExtensionWorkerRecovery/live.py --lldb-launch --admission-only
       - name: State verification scope
         if: always()
-        run: echo "PR 453 at 09bf725ec1c4b53fb9e4ff6febfe147c7553dc97. Full-shim mocks, scoped Swift tests, Release build, and one LLDB-launched native extension admission diagnostic. Same signature, entitlements, probe profile and screen guard; no host security settings changed. Admission does not establish port-recovery coverage. Fixture PASS/FAIL/BLOCKED output is authoritative. PR 509 already verified at a3c4abe and not rerun." >> "$GITHUB_STEP_SUMMARY"
+        run: echo "PR 453 at 06a7970ee5d9212741265b4442bd0e5cbd922cb2. Full-shim mocks, fixture self-checks, Release build, and one LLDB-launched native admission diagnostic after increasing bounded tool startup/capture deadlines. This revision changes only live.py; production sources already passed 10 scoped Swift tests and Release at09bf725. Same signature, entitlements, probe profile and screen guard; no host security settings changed. Admission does not establish port-recovery coverage. Fixture PASS/FAIL/BLOCKED output is authoritative. PR 509 already verified at a3c4abe and not rerun." >> "$GITHUB_STEP_SUMMARY"
