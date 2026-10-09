@@ -16,12 +16,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: quanru/Search
-          ref: b0ee89e82779f4d7dc15c4dc1c4f39a81d12e91a
+          ref: 7ad610d9802e72bef1dc99507d674a54d8102ae0
           persist-credentials: false
       - name: Verify exact revision
-        run: test "$(git rev-parse HEAD)" = b0ee89e82779f4d7dc15c4dc1c4f39a81d12e91a
+        run: test "$(git rev-parse HEAD)" = 7ad610d9802e72bef1dc99507d674a54d8102ae0
       - name: Full shim regression
         run: node Tests/ExtensionWorkerRecovery/run.js
+      - name: Fixture lifecycle checks
+        run: node Tests/ExtensionWorkerRecovery/fixture-checks.js
       - name: Diagnostic helper self-checks
         run: python3 Tests/ExtensionWorkerRecovery/live.py --self-test
       - name: Release app build
@@ -65,4 +67,84 @@ jobs:
           PYTHON
       - name: State verification scope
         if: always()
-        run: echo "PR 453 at b0ee89e82779f4d7dc15c4dc1c4f39a81d12e91a. Production and native manifest parsing are unchanged from 310eb71, which passed 11 scoped Swift tests in run 37909447434. The fixture now awaits a worker registration marker and matches echo boot nonces; readiness alone is not a recovery pass. This run builds Release and exercises the full native fixture using the existing hidden open launcher, avoiding measured debugger cold-start overhead with a bounded probe-socket readiness wrapper. The wrapper only waits for this exact test process to own its probe socket. Same signature, entitlements, probe profile and screen guard; no host security settings changed. Only actual fixture assertions establish exercised recovery coverage; NOT COVERED remains unverified. Fixture PASS/FAIL/BLOCKED output is authoritative. PR 509 already verified at a3c4abe and not rerun." >> "$GITHUB_STEP_SUMMARY"
+        run: echo "PR 453 at 7ad610d9802e72bef1dc99507d674a54d8102ae0. Production and native manifest parsing are unchanged from 310eb71, which passed 11 scoped Swift tests in run 37909447434. The fixture retains actual ports through same-world reinjection and independently audits document identity and serialized callback counts. World replacement and missed callbacks fail. Worker readiness alone is not recovery proof. This run builds Release and exercises the full native fixture using the existing hidden open launcher, avoiding measured debugger cold-start overhead with a bounded probe-socket readiness wrapper. The wrapper only waits for this exact test process to own its probe socket. Same signature, entitlements, probe profile and screen guard; no host security settings changed. Only actual fixture assertions establish exercised recovery coverage; NOT COVERED remains unverified. Fixture PASS/FAIL/BLOCKED output is authoritative. PR 509 already verified at a3c4abe and not rerun." >> "$GITHUB_STEP_SUMMARY"
+
+  upstream-port-baseline:
+    name: Current main baseline · fixture overlay only
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    env:
+      SEARCH_PROBE: review-453-baseline-${{ github.run_id }}
+    defaults:
+      run:
+        working-directory: baseline
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: driceroland/Search
+          ref: 35aa0516fc300031733bb843f334b47baff72232
+          path: baseline
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: quanru/Search
+          ref: 7ad610d9802e72bef1dc99507d674a54d8102ae0
+          path: fixture-source
+          persist-credentials: false
+      - name: Apply fixture and startup-observation overlay only
+        run: |
+          test "$(git rev-parse HEAD)" = 35aa0516fc300031733bb843f334b47baff72232
+          cp -R ../fixture-source/Tests/ExtensionWorkerRecovery Tests/ExtensionWorkerRecovery
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          path = Path('Sources/Search/Bench.swift')
+          source = path.read_text()
+          before = 'answer(["busy": extensions.busy ?? "", "extensions": extensions.installed.map'
+          after = 'answer(["started": extensions.started, "busy": extensions.busy ?? "", "extensions": extensions.installed.map'
+          assert source.count(before) == 1
+          path.write_text(source.replace(before, after))
+          PYTHON
+          test "$(git diff --name-only)" = Sources/Search/Bench.swift
+          git diff -- Sources/Search/Bench.swift
+          git status --short
+      - name: Baseline release app build
+        id: build
+        run: |
+          ./build.sh release
+          if [ -d build/intel/Search.app ]; then
+            ditto build/intel/Search.app build/Search.app
+          fi
+      - name: Native extension recovery fixture
+        if: always() && steps.build.outcome == 'success'
+        timeout-minutes: 10
+        run: |
+          python3 - <<'PYTHON'
+          import runpy, sys, time
+          from pathlib import Path
+          sys.path.insert(0, 'Tests')
+          import split_view as sv
+          original_launch = sv.launch
+          def launch_with_readiness():
+              before = sv.running()
+              try:
+                  original_launch()
+                  deadline = time.monotonic() + 60
+                  while time.monotonic() < deadline:
+                      owners = (sv.running() - before) & sv.holding()
+                      sv.started.update(owners)
+                      if Path(sv.SOCK).exists() and owners:
+                          print('OWNED_BENCH_SOCKET_READY', sv.SOCK, sorted(owners), flush=True)
+                          break
+                      time.sleep(0.2)
+                  else:
+                      raise RuntimeError('Probe did not own its exact bench socket within an additional 60s')
+              finally:
+                  sv.started.update((sv.running() - before) & sv.holding())
+          sv.launch = launch_with_readiness
+          print('VERIFICATION ADAPTATION: original hidden launcher, up to 60s additional readiness for this exact probe socket; source unchanged', flush=True)
+          sys.argv = ['Tests/ExtensionWorkerRecovery/live.py']
+          runpy.run_path(sys.argv[0], run_name='__main__')
+          PYTHON
+      - name: State baseline scope
+        if: always()
+        run: echo "Upstream main 35aa0516fc300031733bb843f334b47baff72232 with fixture files from 7ad610d9802e72bef1dc99507d674a54d8102ae0 and one benchmark response field exposing existing startup state. No recovery implementation is copied. Same real-port assertions and hidden launcher as target. Compare concrete failures; a setup failure alone does not reproduce a recovery defect." >> "$GITHUB_STEP_SUMMARY"
