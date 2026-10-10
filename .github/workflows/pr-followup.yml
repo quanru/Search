@@ -1,0 +1,91 @@
+name: Search PR follow-up validation
+on:
+  push:
+    branches: [verify/search-pr-followup-20261010]
+permissions:
+  contents: read
+jobs:
+  validate:
+    name: PR ${{ matrix.pr }} · ${{ matrix.sha }}
+    runs-on: macos-15-intel
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - pr: '507'
+            sha: 944a0bca33b685fc2cdb10da32e8be719505d489
+            filter: BrowserDiscoveryTests
+          - pr: '454'
+            sha: ef4ffcc475beb181f757628de78d8647e843fc85
+            filter: TabSelectionTests
+          - pr: '415'
+            sha: 4691031afaab16e2629a34eda912cdcecc7c5b2c
+            filter: BrowserImportBoundaryTests|BrowserDiscoveryTests|ImportFileTests
+          - pr: '468'
+            sha: eb0c60dacb1719426da7277071d53f0aba99b0cc
+            filter: FindStageTests
+          - pr: '468-baseline'
+            sha: 35aa0516fc300031733bb843f334b47baff72232
+            filter: FindStageTests
+          - pr: '579'
+            sha: f831297ee22a1585100c4583e6dd13e0918bbf4d
+            filter: all-downloads
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: quanru/Search
+          ref: ${{ matrix.sha }}
+          persist-credentials: false
+      - name: Verify exact source revision
+        env:
+          EXPECTED_SHA: ${{ matrix.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/checkout@v4
+        if: startsWith(matrix.pr, '468')
+        with:
+          ref: verify/search-pr-followup-20261010
+          path: observer
+          persist-credentials: false
+          sparse-checkout: .github/diagnostics/page-size-probe.py
+      - name: Scoped Swift regression
+        env:
+          TEST_FILTER: ${{ matrix.filter }}
+        run: |
+          set -o pipefail
+          if [ "$TEST_FILTER" = all-downloads ]; then
+            python3 Tests/run-ci-tests.py 2>&1 | tee swift-tests.log
+          else
+            swift test --filter "$TEST_FILTER" 2>&1 | tee swift-tests.log
+          fi
+      - name: Release build
+        if: matrix.pr != '579'
+        run: |
+          set -o pipefail
+          ./build.sh release 2>&1 | tee release-build.log
+          if [ -d build/intel/Search.app ]; then
+            ditto build/intel/Search.app build/Search.app
+          fi
+      - name: Observe native page bounds
+        if: startsWith(matrix.pr, '468')
+        run: |
+          set -o pipefail
+          python3 observer/.github/diagnostics/page-size-probe.py 2>&1 | tee page-size.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr-${{ matrix.pr }}-${{ matrix.sha }}
+          path: |
+            swift-tests.log
+            release-build.log
+            page-size.log
+            page-size-results.json
+          retention-days: 14
+      - name: Record validation scope
+        if: always()
+        env:
+          EXPECTED_SHA: ${{ matrix.sha }}
+          PR_NUMBER: ${{ matrix.pr }}
+        run: |
+          echo "PR $PR_NUMBER, exact revision $EXPECTED_SHA. Scoped Swift tests and Release build; #579 separately runs every Swift test with download-process isolation. Page-size checks observe hidden native bounds only. No model calls or real-profile data." >> "$GITHUB_STEP_SUMMARY"
