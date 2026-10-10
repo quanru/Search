@@ -14,24 +14,12 @@ jobs:
       max-parallel: 3
       matrix:
         include:
-          - pr: '507'
-            sha: 944a0bca33b685fc2cdb10da32e8be719505d489
-            filter: BrowserDiscoveryTests
-          - pr: '454'
-            sha: ef4ffcc475beb181f757628de78d8647e843fc85
-            filter: TabSelectionTests
           - pr: '415'
-            sha: 4691031afaab16e2629a34eda912cdcecc7c5b2c
+            sha: c6ed132d744b9205e5fec615ff66cff965d92fed
             filter: BrowserImportBoundaryTests|BrowserDiscoveryTests|ImportFileTests
           - pr: '468'
-            sha: eb0c60dacb1719426da7277071d53f0aba99b0cc
+            sha: b4a6fdf7590ac0896ed46f796aba39acffb4aed5
             filter: FindStageTests
-          - pr: '468-baseline'
-            sha: 35aa0516fc300031733bb843f334b47baff72232
-            filter: FindStageTests
-          - pr: '579'
-            sha: f831297ee22a1585100c4583e6dd13e0918bbf4d
-            filter: all-downloads
     steps:
       - uses: actions/checkout@v4
         with:
