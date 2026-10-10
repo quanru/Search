@@ -1,5 +1,6 @@
 """Observe hidden native page bounds; this is not a screenshot acceptance test."""
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -40,10 +41,13 @@ try:
                 time.sleep(.2)
             if not frame:
                 raise RuntimeError('No active page frame: '+json.dumps(sample))
-            windows = [w for w in sample['windows'] if w['kind'] == 'BrowserWindow']
+            windows = sv.cmd({'do':'windows'})['windows']
             if len(windows) != 1:
-                raise RuntimeError('Expected one owned BrowserWindow: '+json.dumps(sample['windows']))
-            actual = windows[0]['frame'][2]
+                raise RuntimeError('Expected one owned browser window: '+json.dumps(windows))
+            bounds = re.findall(r'-?\d+(?:\.\d+)?', windows[0]['frame'])
+            if len(bounds) != 4:
+                raise RuntimeError('Invalid native window frame: '+json.dumps(windows))
+            actual = float(bounds[2])
             row = {'side':side,'requestedWidth':width,'actualWidth':actual,'pageFrame':frame,
                    'withinWindow': frame[0]>=-2 and frame[0]+frame[2]<=actual+2}
             rows.append(row)
