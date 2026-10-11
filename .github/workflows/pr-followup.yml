@@ -1,0 +1,57 @@
+name: Search PR follow-up validation
+on:
+  push:
+    branches: [verify/search-pr-followup-20261011]
+permissions:
+  contents: read
+jobs:
+  validate:
+    name: PR ${{ matrix.pr }}
+    runs-on: macos-15-intel
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - pr: '507'
+            sha: ded281156cba699a08636cb093470ec058899eba
+            filter: BrowserDiscoveryTests
+          - pr: '454'
+            sha: 561a7f7bfdbebc87d7e8d12160dfdcf7012c4a9d
+            filter: TabSelectionTests
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: quanru/Search
+          ref: ${{ matrix.sha }}
+          persist-credentials: false
+      - name: Verify exact source revision
+        env:
+          EXPECTED_SHA: ${{ matrix.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Scoped Swift regression
+        env:
+          TEST_FILTER: ${{ matrix.filter }}
+        run: |
+          set -o pipefail
+          swift test --filter "$TEST_FILTER" 2>&1 | tee swift-tests.log
+      - name: Release build
+        run: |
+          set -o pipefail
+          ./build.sh release 2>&1 | tee release-build.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr-${{ matrix.pr }}-${{ matrix.sha }}
+          path: |
+            swift-tests.log
+            release-build.log
+          retention-days: 14
+      - name: Record validation scope
+        if: always()
+        env:
+          EXPECTED_SHA: ${{ matrix.sha }}
+          PR_NUMBER: ${{ matrix.pr }}
+        run: |
+          echo "PR $PR_NUMBER, exact revision $EXPECTED_SHA. Scoped Swift tests and Release build on hosted Intel macOS. No model calls or real-profile data. Interactive drag behavior remains a manual check." >> "$GITHUB_STEP_SUMMARY"
