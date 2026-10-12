@@ -514,10 +514,12 @@ def self_test():
 class Site(BaseHTTPRequestHandler):
     def do_GET(self):
         # Serve only this fixture, never the checkout or arbitrary disk paths.
-        if self.path.split('?', 1)[0] != '/site.html':
+        path = self.path.split('?', 1)[0]
+        if path not in ['/site.html', '/cross-origin.html']:
             self.send_error(404)
             return
-        body = (HERE / 'site.html').read_bytes()
+        name = 'cross-origin.html' if path == '/cross-origin.html' else 'site.html'
+        body = (HERE / name).read_text().replace('FIXTURE_PORT', str(self.server.server_port)).encode()
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.send_header('Content-Length', str(len(body)))
@@ -826,7 +828,7 @@ class Live:
             self.check(f'{name}: {label} original fixture instance retained', state['instance'] == self.instances[label], state)
             self.check(f'{name}: {label} no fixture errors', not state['errors'], state['errors'])
         audit = self.content_audit()
-        self.check(f'{name}: content main document retained', audit and audit['document'] == self.content_document, audit)
+        self.check(f'{name}: content child document retained', audit and audit['document'] == self.content_document, audit)
         self.check(f'{name}: content isolated fixture retained actual state',
                    audit and set(audit['instances']) == {self.instances['content']} and not audit['errors']
                    and not audit['counts'].get('world-replaced', 0), audit)
@@ -873,9 +875,16 @@ class Live:
                    status, fatal=True)
         self.extension = installed[0]['id']
         ready_worker = self.wait_worker_ready('initial')
-        self.tabs['content'] = self.sv.cmd({'do': 'open', 'url': base + '/site.html'})['id']
+        self.tabs['content'] = self.sv.cmd({'do': 'open', 'url': base.replace('127.0.0.1', 'localhost') + '/cross-origin.html'})['id']
         for label in ['page', 'requester']:
             self.tabs[label] = self.sv.cmd({'do': 'ext-page', 'id': self.extension, 'path': 'page.html'})['id']
+        bridge = self.poll('cross-origin child observation bridge',
+                           lambda: self.eval('content', 'globalThis.__searchCrossOriginFixture || null'),
+                           lambda value: value and value['reports'] > 0)
+        self.check('content port belongs to an actual cross-origin child frame',
+                   bridge['parentOrigin'] != bridge['childOrigin']
+                   and self.eval('content', "document.getElementById('fixture-child').contentDocument === null") is True,
+                   bridge, fatal=True)
         workers = []
         for label in self.tabs:
             state = self.poll(label + ' initial real port echo', lambda: self.state(label),
@@ -1064,8 +1073,8 @@ class Live:
         self.idle_wake(worker)
         self.skip('dead-worker detection and failed-start wake recovery',
                   'application withholding leaves the shim ping healthy; no native startup fault was injected')
-        self.skip('delayed worker startup and cross-origin frame coverage',
-                  'the bounded event-loop stall covers an already-running worker; this runner uses top-level fixture documents')
+        self.skip('delayed worker startup',
+                  'the bounded event-loop stall covers an already-running worker, not delayed cold startup')
 
     def diagnostics(self):
         # Capture before the report wait and before finish removes the logs.
