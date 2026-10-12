@@ -1,0 +1,83 @@
+name: Search acceptance evidence
+on:
+  push:
+    branches: [verify/search-acceptance-20261012]
+permissions:
+  contents: read
+jobs:
+  recovery:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 7ad610d9802e72bef1dc99507d674a54d8102ae0
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          path: observer
+          sparse-checkout: .github/diagnostics
+          persist-credentials: false
+      - name: Overlay fixture observations only
+        run: |
+          test "$(git rev-parse HEAD)" = 7ad610d9802e72bef1dc99507d674a54d8102ae0
+          cp -R observer/.github/diagnostics/recovery/. Tests/ExtensionWorkerRecovery/
+          test -z "$(git diff --name-only -- Sources)"
+          node Tests/ExtensionWorkerRecovery/fixture-checks.js
+          python3 Tests/ExtensionWorkerRecovery/live.py --self-test
+      - name: Build
+        run: |
+          ./build.sh release
+          ditto build/intel/Search.app build/Search.app
+      - name: Live recovery
+        run: |
+          set -o pipefail
+          python3 observer/.github/diagnostics/recovery-launch.py 2>&1 | tee recovery.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: recovery-evidence
+          path: recovery.log
+          retention-days: 14
+  layout:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: upstream
+            sha: 59c1b4e1ddf15433701a687e9292d607589fe20d
+          - label: pr468
+            sha: b4a6fdf7590ac0896ed46f796aba39acffb4aed5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          path: observer
+          sparse-checkout: .github/diagnostics
+          persist-credentials: false
+      - name: Verify product revision
+        env:
+          EXPECTED_SHA: ${{ matrix.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Build
+        run: |
+          ./build.sh release
+          ditto build/intel/Search.app build/Search.app
+      - name: Observe layout and native chrome drawings
+        run: |
+          set -o pipefail
+          python3 observer/.github/diagnostics/page-size-probe.py 2>&1 | tee layout.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: layout-${{ matrix.label }}
+          path: |
+            layout.log
+            page-size-results.json
+            layout-evidence
+          retention-days: 14
