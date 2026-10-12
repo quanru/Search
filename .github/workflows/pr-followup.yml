@@ -1,7 +1,7 @@
 name: Search PR follow-up validation
 on:
   push:
-    branches: [verify/search-pr-followup-20261011]
+    branches: [verify/search-pr-followup-20261012]
 permissions:
   contents: read
 jobs:
@@ -14,12 +14,9 @@ jobs:
       max-parallel: 2
       matrix:
         include:
-          - pr: '507'
-            sha: ded281156cba699a08636cb093470ec058899eba
-            filter: BrowserDiscoveryTests
-          - pr: '454'
-            sha: 561a7f7bfdbebc87d7e8d12160dfdcf7012c4a9d
-            filter: TabSelectionTests
+          - pr: '415'
+            sha: 8877bf8f6e698711a8de153581b3a9a058c60027
+            filter: BrowserDiscoveryTests|BrowserImportBoundaryTests|ImportFileTests
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,11 +32,11 @@ jobs:
           TEST_FILTER: ${{ matrix.filter }}
         run: |
           set -o pipefail
-          swift test --filter "$TEST_FILTER" 2>&1 | tee swift-tests.log
+          swift test --jobs 2 --filter "$TEST_FILTER" 2>&1 | tee swift-tests.log
       - name: Release build
         run: |
           set -o pipefail
-          ./build.sh release 2>&1 | tee release-build.log
+          swift build -c release --jobs 2 -Xswiftc -Osize 2>&1 | tee release-build.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -54,4 +51,4 @@ jobs:
           EXPECTED_SHA: ${{ matrix.sha }}
           PR_NUMBER: ${{ matrix.pr }}
         run: |
-          echo "PR $PR_NUMBER, exact revision $EXPECTED_SHA. Scoped Swift tests and Release build on hosted Intel macOS. No model calls or real-profile data. Interactive drag behavior remains a manual check." >> "$GITHUB_STEP_SUMMARY"
+          echo "PR $PR_NUMBER, exact revision $EXPECTED_SHA. Scoped Swift tests and Release build on hosted Intel macOS. No model calls or real-profile data. Native TCC/picker and visual checks are not included." >> "$GITHUB_STEP_SUMMARY"
