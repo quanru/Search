@@ -918,18 +918,18 @@ class Live:
         self.check('healthy wake did not record a native restart', after == before, after)
 
     def brief_busy(self):
-        # Ensure the requester's next runtime message is eligible for Search's
-        # five-second worker check, then queue that message DURING a real stall.
+        # This probes real content-script messaging overlap. The content path
+        # does not invoke the extension-page checkWorker; do not claim health-check overlap.
         self.stable_for(5.3, 1, 0, 'idle before brief busy worker')
         before = self.restart_notes()
         token = self.click('page', 'busy')
         state = self.poll('worker armed bounded stall', lambda: self.state('page'),
                           lambda value: value and self.control(value, token, 'busy-armed'))
         armed = self.control(state, token, 'busy-armed')
-        time.sleep(max(0, (armed['scheduledAt'] + 200 - time.time() * 1000) / 1000))
-        request = self.click('requester', 'roundtrip')
-        state = self.poll('runtime reply after bounded real worker stall', lambda: self.state('requester'),
-                          lambda value: any(item['token'] == request and item['status'] != 'pending'
+        self.eval('content', "document.getElementById('roundtrip-content').dataset.scheduledAt = " + str(armed['scheduledAt'] + 200))
+        request = self.click('content', 'roundtrip-content')
+        state = self.poll('runtime reply after bounded real worker stall', lambda: self.state('content'),
+                          lambda value: any(item['token'] == request and item['status'] in ('fulfilled', 'rejected')
                                             for item in value['roundtrips']), timeout=12)
         roundtrip = next(item for item in state['roundtrips'] if item['token'] == request)
         state = self.poll('worker completed bounded stall', lambda: self.state('page'),
@@ -938,13 +938,11 @@ class Live:
         self.check('brief busy worker delivered runtime echo', roundtrip['status'] == 'fulfilled'
                    and (roundtrip.get('value') or {}).get('echo', {}).get('token') == request, roundtrip)
         # Scheduling contention can make eval arrive after the worker finishes.
-        # Report this as uncovered rather than claiming the ping was delayed.
+        # A missed overlap fails this diagnostic; it cannot become coverage by a skip.
         overlap = done['startedAt'] <= roundtrip['startedAt'] < done['finishedAt']
         latency = roundtrip['finishedAt'] - roundtrip['startedAt']
-        if overlap and latency >= 250:
-            self.check('real worker event-loop stall delayed a page message', True)
-        else:
-            self.skip('overlapping worker stall', f'eval did not establish a delayed request: roundtrip={roundtrip}, busy={done}')
+        self.check('content-script request actually overlaps worker stall', overlap and latency >= 250,
+                   {'roundtrip': roundtrip, 'busy': done, 'latencyMs': latency})
         print('BUSY', json.dumps({'armed': armed, 'done': done, 'roundtrip': roundtrip, 'latencyMs': latency}, sort_keys=True), flush=True)
         # Longer than the ping's 15-second deadline plus retry spacing, so a
         # stale timeout cannot falsely pass just because we immediately revive.
@@ -1073,6 +1071,8 @@ class Live:
         self.idle_wake(worker)
         self.skip('dead-worker detection and failed-start wake recovery',
                   'application withholding leaves the shim ping healthy; no native startup fault was injected')
+        self.skip('extension-page health-check overlap',
+                  'the independent content-script runtime message does not invoke extension-page checkWorker')
         self.skip('delayed worker startup',
                   'the bounded event-loop stall covers an already-running worker, not delayed cold startup')
 

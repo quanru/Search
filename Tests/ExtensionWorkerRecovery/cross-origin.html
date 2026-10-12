@@ -1,6 +1,7 @@
 <!doctype html><meta charset="utf-8"><title>Cross-origin child port fixture</title>
 <body>
 <button id="connect-content">Fresh child connection</button><button id="send-content">Send to child</button>
+<button id="roundtrip-content">Scheduled content runtime message</button>
 <script>
 (() => {
   const childOrigin = 'http://127.0.0.1:FIXTURE_PORT';
@@ -18,10 +19,10 @@
     document.documentElement.setAttribute('data-search-port-fixture', JSON.stringify(value.state));
     globalThis.__searchPortDocumentFixture = value.audit;
   });
-  for (const id of ['connect-content', 'send-content']) {
+  for (const id of ['connect-content', 'send-content', 'roundtrip-content']) {
     const button = document.getElementById(id);
     button.addEventListener('click', () => frame.contentWindow.postMessage({
-      kind: 'child-port-command', button: id, token: button.dataset.token
+      kind: 'child-port-command', button: id, token: button.dataset.token, scheduledAt: Number(button.dataset.scheduledAt)
     }, childOrigin));
   }
   frame.src = childOrigin + '/site.html';

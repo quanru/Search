@@ -6,7 +6,7 @@ const scripts = name => [...fs.readFileSync(path.join(__dirname, name), 'utf8').
 const listeners = {}, buttons = {}, attributes = new Map(), sent = [];
 const childWindow = { postMessage: (value, origin) => sent.push({ value, origin }) };
 const frame = { contentWindow: childWindow };
-for (const id of ['connect-content', 'send-content']) buttons[id] = { dataset: { token: 'fixture-token' }, addEventListener: (_, callback) => buttons[id].click = callback };
+for (const id of ['connect-content', 'send-content', 'roundtrip-content']) buttons[id] = { dataset: { token: 'fixture-token' }, addEventListener: (_, callback) => buttons[id].click = callback };
 vm.runInNewContext(scripts('cross-origin.html')[0].replaceAll('FIXTURE_PORT', '12345'), {
   location: { origin: 'http://localhost:12345' },
   document: { createElement: () => frame, getElementById: id => buttons[id], body: { appendChild() {} }, documentElement: { setAttribute: (key, value) => attributes.set(key, value) } },
@@ -20,7 +20,7 @@ assert.equal(attributes.size, 0);
 listeners.message({ source: childWindow, origin: 'http://127.0.0.1:12345', data: report });
 assert.deepEqual(JSON.parse(attributes.get('data-search-port-fixture')), state);
 buttons['connect-content'].click();
-assert.deepEqual(JSON.parse(JSON.stringify(sent[0])), { value: { kind: 'child-port-command', button: 'connect-content', token: 'fixture-token' }, origin: 'http://127.0.0.1:12345' });
+assert.deepEqual(JSON.parse(JSON.stringify(sent[0])), { value: { kind: 'child-port-command', button: 'connect-content', token: 'fixture-token', scheduledAt: null }, origin: 'http://127.0.0.1:12345' });
 const parentWindow = {}, childListeners = {}, clicked = [];
 vm.runInNewContext(scripts('site.html')[1], {
   parent: parentWindow, window: {}, location: { port: '12345' },
