@@ -1,0 +1,61 @@
+name: Search worker process inventory
+on:
+  push:
+    branches: [verify/search-worker-process-20261014]
+permissions:
+  contents: read
+jobs:
+  inventory:
+    runs-on: macos-15-intel
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: b952ac34a2ec4b06bbf9731dc65adcfdae3bb296
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          path: observer
+          sparse-checkout: .github/diagnostics
+          persist-credentials: false
+      - name: Add read-only probe process observation
+        run: |
+          test "$(git rev-parse HEAD)" = b952ac34a2ec4b06bbf9731dc65adcfdae3bb296
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('Sources/Search/Bench.swift')
+          s = p.read_text()
+          before = '"loaded": context != nil,'
+          after = '''"diagnosticWorkerProcess": { () -> Int in
+                                  guard Store.testing, let context else { return 0 }
+                                  let getter = NSSelectorFromString("_backgroundWebView")
+                                  guard context.responds(to: getter),
+                                        let view = context.perform(getter)?.takeUnretainedValue() as? WKWebView,
+                                        view.responds(to: NSSelectorFromString("_webProcessIdentifier")) else { return 0 }
+                                  return view.value(forKey: "_webProcessIdentifier") as? Int ?? 0
+                              }(),
+                              "loaded": context != nil,'''
+          assert s.count(before) == 1
+          p.write_text(s.replace(before, after))
+          PY
+          test "$(git diff --name-only -- Sources)" = Sources/Search/Bench.swift
+          git diff -- Sources/Search/Bench.swift
+      - name: Build observed Release app
+        run: |
+          ./build.sh release
+          ditto build/intel/Search.app build/Search.app
+      - name: Inventory real admitted fixture processes
+        run: |
+          set -o pipefail
+          python3 observer/.github/diagnostics/process-inventory.py 2>&1 | tee process-inventory.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: worker-process-inventory
+          path: |
+            process-inventory.log
+            worker-process-inventory.json
+          retention-days: 14
+      - name: Record limits
+        if: always()
+        run: echo 'Read-only diagnostic overlay on b952ac3. Private getter observations only, in a disposable hosted probe. No process is stopped or killed. Admission does not prove failure recovery, cold startup or health-check overlap. Unavailable getters mean process isolation remains unknown.' >> "$GITHUB_STEP_SUMMARY"
