@@ -1,0 +1,100 @@
+name: Search post-release PR validation
+on:
+  push:
+    branches: [verify/search-post-release-20261015]
+permissions:
+  contents: read
+jobs:
+  validate:
+    name: PR ${{ matrix.pr }}
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        include:
+          - pr: '509'
+            sha: f447ddb2a2122ef4cb0dbfeebf7da4609c5c5556
+            filter: PopupGestureTests|PopupGestureRelayTests
+          - pr: '507'
+            sha: 44daab5e2a2775ba87d3e10a8ef3d0fa5289b167
+            filter: BrowserDiscoveryTests
+          - pr: '468'
+            sha: 3178e14eb235565180034dbf9f1efa6fa5836206
+            filter: FindStageTests
+          - pr: '454'
+            sha: f129f9a26db6714b0a7f53111a67d2241b455459
+            filter: TabSelectionTests
+          - pr: '453'
+            sha: 4b3cb9e57ddeb99307226ff133efbdec9073c564
+            filter: ExtensionWorkerPortTests
+          - pr: '415'
+            sha: 3f18cf7164da4f9f63728e55c2c96aa558a8d697
+            filter: BrowserDiscoveryTests|BrowserImportBoundaryTests|ImportFileTests
+          - pr: '468-baseline'
+            sha: 615bbca0ecdda876973b325476587d3d8b4c2bb9
+            filter: FindStageTests
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.sha }}
+          persist-credentials: false
+      - name: Verify exact source revision
+        env:
+          EXPECTED_SHA: ${{ matrix.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/checkout@v4
+        with:
+          path: observer
+          sparse-checkout: .github/diagnostics
+          persist-credentials: false
+      - name: Scoped Swift regression
+        env:
+          TEST_FILTER: ${{ matrix.filter }}
+        run: |
+          set -o pipefail
+          swift test --filter "$TEST_FILTER" 2>&1 | tee swift-tests.log
+      - name: Shim and fixture checks
+        if: matrix.pr == '453'
+        run: |
+          node Tests/ExtensionWorkerRecovery/run.js
+          node Tests/ExtensionWorkerRecovery/fixture-checks.js
+          node Tests/ExtensionWorkerRecovery/cross-origin-checks.js
+          python3 Tests/ExtensionWorkerRecovery/live.py --self-test
+      - name: Popup relay script regression
+        if: matrix.pr == '509'
+        run: node Tests/popup_gesture_script.js
+      - name: Release build
+        run: |
+          set -o pipefail
+          ./build.sh release 2>&1 | tee release-build.log
+          ditto build/intel/Search.app build/Search.app
+      - name: Native recovery acceptance
+        if: matrix.pr == '453'
+        run: |
+          set -o pipefail
+          python3 observer/.github/diagnostics/recovery-launch.py 2>&1 | tee recovery.log
+      - name: Native layout and drawings
+        if: startsWith(matrix.pr, '468')
+        run: |
+          set -o pipefail
+          python3 observer/.github/diagnostics/page-size-probe.py 2>&1 | tee layout.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr-${{ matrix.pr }}-${{ matrix.sha }}
+          path: |
+            swift-tests.log
+            release-build.log
+            recovery.log
+            layout.log
+            page-size-results.json
+            layout-evidence
+          retention-days: 14
+      - name: Record scope
+        if: always()
+        env:
+          PR_NUMBER: ${{ matrix.pr }}
+          EXPECTED_SHA: ${{ matrix.sha }}
+        run: echo "PR $PR_NUMBER at $EXPECTED_SHA, post-1.0.5 integration. Scoped Swift regression and Release build. Recovery runs only for 453, layout drawings only for 468 and its upstream baseline. No model calls or real profiles. Native drag, long-lived sign-in menus, original clipping, cold-start and dead-worker acceptance are not implied by this job." >> "$GITHUB_STEP_SUMMARY"
