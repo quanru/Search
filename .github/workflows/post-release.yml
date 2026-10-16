@@ -14,27 +14,9 @@ jobs:
       max-parallel: 6
       matrix:
         include:
-          - pr: '509'
-            sha: f447ddb2a2122ef4cb0dbfeebf7da4609c5c5556
-            filter: PopupGestureTests|PopupGestureRelayTests
-          - pr: '507'
-            sha: 44daab5e2a2775ba87d3e10a8ef3d0fa5289b167
-            filter: BrowserDiscoveryTests
-          - pr: '468'
-            sha: 3178e14eb235565180034dbf9f1efa6fa5836206
-            filter: FindStageTests
-          - pr: '454'
-            sha: f129f9a26db6714b0a7f53111a67d2241b455459
-            filter: TabSelectionTests
           - pr: '453'
-            sha: 4b3cb9e57ddeb99307226ff133efbdec9073c564
+            sha: b08f515faea63c343a49b3892853db2eb0833ed1
             filter: ExtensionWorkerPortTests
-          - pr: '415'
-            sha: 3f18cf7164da4f9f63728e55c2c96aa558a8d697
-            filter: BrowserDiscoveryTests|BrowserImportBoundaryTests|ImportFileTests
-          - pr: '468-baseline'
-            sha: 615bbca0ecdda876973b325476587d3d8b4c2bb9
-            filter: FindStageTests
     steps:
       - uses: actions/checkout@v4
         with:
