@@ -1,0 +1,88 @@
+name: Search review follow-up validation
+on:
+  push:
+    branches: [verify/search-review-followup-20261016]
+permissions:
+  contents: read
+jobs:
+  validate:
+    name: PR ${{ matrix.pr }}
+    runs-on: macos-15-intel
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - pr: '415'
+            sha: 243921d704103643650e66621ab272ebaa27138f
+            filter: BrowserDiscoveryTests|BrowserImportBoundaryTests|ImportFileTests
+          - pr: '509'
+            sha: 38e8ad5fdad60fc44dda9df513b86a17f6a03294
+            filter: PopupGestureTests|PopupGestureRelayTests
+          - pr: '453-unload'
+            sha: b08f515faea63c343a49b3892853db2eb0833ed1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact revision
+        env:
+          EXPECTED_SHA: ${{ matrix.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/checkout@v4
+        with:
+          path: observer
+          sparse-checkout: .github/diagnostics
+          persist-credentials: false
+      - name: Unload failure regression with test doubles
+        if: matrix.pr == '453-unload'
+        run: |
+          set -o pipefail
+          python3 observer/.github/diagnostics/unload-review-check.py Sources/Search/Extensions.swift | tee unload.log
+          git show 4b3cb9e57ddeb99307226ff133efbdec9073c564:Sources/Search/Extensions.swift > before.swift
+          if python3 observer/.github/diagnostics/unload-review-check.py before.swift > before.log 2>&1; then
+            echo 'Old implementation unexpectedly passed'; exit 1
+          fi
+          grep -F 'Missing/duplicate cleanup: host/socket cleanup, fail=true' before.log
+      - name: Scoped Swift regression
+        if: matrix.pr != '453-unload'
+        env:
+          TEST_FILTER: ${{ matrix.filter }}
+        run: |
+          set -o pipefail
+          swift test --filter "$TEST_FILTER" 2>&1 | tee swift-tests.log
+      - name: Popup relay regression
+        if: matrix.pr == '509'
+        run: node Tests/popup_gesture_script.js
+      - name: Release build
+        if: matrix.pr != '453-unload'
+        run: |
+          set -o pipefail
+          ./build.sh release 2>&1 | tee release-build.log
+          ditto build/intel/Search.app build/Search.app
+      - name: Native popup and link-menu regressions
+        if: matrix.pr == '509'
+        run: |
+          set -o pipefail
+          python3 Tests/popups.py 2>&1 | tee popups.log
+          python3 Tests/link_menu.py 2>&1 | tee link-menu.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: review-${{ matrix.pr }}-${{ matrix.sha }}
+          path: |
+            swift-tests.log
+            release-build.log
+            popups.log
+            link-menu.log
+            unload.log
+            before.log
+          retention-days: 14
+      - name: Record validation scope
+        if: always()
+        env:
+          PR: ${{ matrix.pr }}
+          SHA: ${{ matrix.sha }}
+        run: echo "PR $PR at $SHA. 453-unload executes the extracted actual method with test doubles, including a failing old-source control; it is not native WebKit fault injection. Native recovery runs separately. 415 does not exercise real TCC or visible picker. 509 native menu held longer than five seconds remains manual. No real profiles or model calls." >> "$GITHUB_STEP_SUMMARY"
