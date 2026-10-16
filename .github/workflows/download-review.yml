@@ -1,0 +1,30 @@
+name: Search download fixture post-release validation
+on:
+  push:
+    branches: [verify/search-download-review-20261016]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: macos-15-intel
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 3f6e8ac908ad91f1fa08213310a3065a983a48bb
+          persist-credentials: false
+      - name: Verify exact revision
+        run: test "$(git rev-parse HEAD)" = 3f6e8ac908ad91f1fa08213310a3065a983a48bb
+      - name: Every Swift test with isolated download processes
+        run: |
+          set -o pipefail
+          python3 Tests/run-ci-tests.py 2>&1 | tee swift-tests.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: download-review-3f6e8ac
+          path: swift-tests.log
+          retention-days: 14
+      - name: Record scope
+        if: always()
+        run: echo 'Exact PR 579 head 3f6e8ac after upstream 4cbeaa7. Every Swift test; all seven download journeys run in fresh processes, no retries or skips. Test-only diff, no app source change, no model service or real profile.' >> "$GITHUB_STEP_SUMMARY"
